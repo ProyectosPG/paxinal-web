@@ -33,7 +33,7 @@ export function createGuide(A, { onFinish } = {}) {
     { id: 'agro', text: () => 'Cruza el paso a nivel hasta O Agro', where: () => ({ map: 'agro', x: 46, y: A.maps.agro.spawn.y + 0.5, label: 'O Agro' }) },
     { id: 'leira', text: () => (st.gift ? 'Entra en tu leira y cosecha lo que dejó el vecino' : `Entra en tu leira (la de ${D.deptName(home())})`), where: fieldPt },
     { id: 'arar', text: () => `Ara una casilla de hierba de tu leira (${keyOf((id) => id === 'azada') || 1} y Espacio)`, where: fieldPt },
-    { id: 'plantar', text: () => (rainy() ? `Planta unas semillas (${seedKey() || 3}); hoy riega la lluvia` : `Planta (${seedKey() || 3}) y riega (${keyOf((id) => id === 'regadera') || 2})`), where: fieldPt },
+    { id: 'plantar', text: () => (rainy() ? `Planta unas semillas (${seedKey() || 4}); hoy riega la lluvia` : `Planta (${seedKey() || 4}) y riega (${keyOf((id) => id === 'regadera') || 2})`), where: fieldPt },
     { id: 'caja', text: () => 'Mete algo en la caja de envíos', where: shipPt },
     { id: 'cafe', text: () => (cafeOpen() ? 'Tómate un café en la cafetería de Diego y Sabrina' : 'Tómate un café (de noche, en el Café Bonsai)'), where: cafePt },
   ];

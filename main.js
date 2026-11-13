@@ -230,7 +230,7 @@ function startWorld() {
     talkSeq([[null, '¡Bienvenido/a a Paximiña de Arousa! Acabas de llegar en el tren de las 9:14… con 25 minutos de retraso, como siempre.'],
       [null, `Tu casa es la de ${house.name}, en O Agro: al otro lado de la vía, cruzando el paso a nivel (sube por la calle).`],
       ...gift,
-      [null, 'Diego y Sabrina te han dejado una azada, una regadera, unas semillas y un café. Teclas 1-9 para elegir y Espacio para usarlas. ¡A plantar!'],
+      [null, 'Diego y Sabrina te han dejado una azada, una regadera, unas semillas y un café. Con los números eliges (1 azada, 2 regadera, del 4 al 9 las semillas y 0 el café) y con Espacio lo usas. ¡A plantar!'],
       [null, 'Arriba a la izquierda tienes las tareas de tu primer día, y la flecha amarilla te lleva a cada sitio. Con la M ves el mapa del pueblo. También se juega con el ratón: haz clic donde quieras ir o en lo que quieras usar.']]);
   }
 }
@@ -848,7 +848,7 @@ $('#btn-menu').addEventListener('click', () => {
     <button class="btn alt" id="m-guide">📋 Guía del primer día</button>
     <button class="btn alt" id="m-train">🚆 Llamar un tren (modo prueba)</button>
     <button class="btn alt" id="m-out">Cambiar de usuario</button>
-    <p class="muted" style="font-family:system-ui;font-size:13px">WASD o flechas para moverte (Mayús corre) · Espacio o E para usar, hablar o entrar · 1-9 para elegir herramienta · T para el chat · I para la mochila · +/− zoom · también puedes hacer clic.</p></div>`);
+    <p class="muted" style="font-family:system-ui;font-size:13px">WASD o flechas para moverte (Mayús corre) · Espacio o E para usar, hablar o entrar · 1 azada, 2 regadera, 3 caña, 4-9 semillas (más con , y .) y 0 café · T para el chat · I para la mochila · +/− zoom · también puedes hacer clic.</p></div>`);
   mo.el.querySelector('#m-sound').onclick = (e) => { e.target.textContent = Sound.toggle() ? '🔊 Sonido: sí' : '🔇 Sonido: no'; };
   mo.el.querySelector('#m-zin').onclick = () => A.world.setZoom(A.world.zoom + 1);
   mo.el.querySelector('#m-zout').onclick = () => A.world.setZoom(A.world.zoom - 1);
@@ -888,21 +888,85 @@ function renderHud() {
   $('#hud-energy').textContent = P.energy;
   $('#hud-energy-bar').style.width = `${Math.max(0, Math.min(100, (P.energy / D.ENERGY_MAX) * 100))}%`;
 }
+// (A13) Barra rápida con teclas fijas: 1 azada, 2 regadera, 3 caña y 0 café. Del 4 al 9 van las semillas
+// (y el café del Bonsai), de 6 en 6: cada cosa se queda en su hueco mientras quede alguna, lo nuevo ocupa
+// el primer hueco libre y, si no caben, se pasa de página con las flechas de la barra, la rueda del ratón
+// encima de ella o las teclas «,» y «.». El orden se guarda por jugador en el navegador.
+// A.slots[i] es lo que hay en la tecla (i + 1) % 10, o null si ese hueco está vacío.
+const BAR_N = 6;
+const barKey = () => `paxinal.barra.${net.kind}.${A.player.id}`;
+function barOrder(inv) {
+  if (A.barFor !== A.player.id) {
+    A.barFor = A.player.id; A.barPage = null;
+    try { A.bar = JSON.parse(localStorage.getItem(barKey()) || '[]'); } catch { A.bar = []; }
+    if (!Array.isArray(A.bar)) A.bar = [];
+  }
+  const have = [...SEEDS, ...Object.keys(D.ITEMS).filter((k) => isDrink(k) && k !== 'cafe')].filter((k) => inv[k] > 0);
+  const before = JSON.stringify(A.bar);
+  A.bar = A.bar.map((id, j) => (have.includes(id) && A.bar.indexOf(id) === j ? id : null));
+  for (const id of have) if (!A.bar.includes(id)) { const hole = A.bar.indexOf(null); if (hole < 0) A.bar.push(id); else A.bar[hole] = id; }
+  while (A.bar.length && A.bar[A.bar.length - 1] === null) A.bar.pop();
+  if (JSON.stringify(A.bar) !== before) localStorage.setItem(barKey(), JSON.stringify(A.bar));
+  return Math.max(1, Math.ceil(A.bar.length / BAR_N));
+}
+A.barScroll = (dir) => {
+  if (!A.player) return;
+  const pages = barOrder(A.player.inventory || {}); if (pages < 2) return;
+  A.barPage = ((A.barPage || 0) + dir + pages) % pages;
+  renderHotbar(); Sound.play('select', 0.2);
+};
+// La barra va centrada, pero si así se mete debajo del chat (abajo a la derecha), se corre a la izquierda
+// lo justo para que se vea entera, hasta el borde de la pantalla.
+function placeHotbar() {
+  const bar = $('#hotbar'), chatEl = $('#chat'), w = bar.offsetWidth, vw = innerWidth;
+  let c = vw / 2;
+  if (w && !chatEl.hidden) {
+    const r = chatEl.getBoundingClientRect();
+    if (r.width < vw - 1) c = Math.max(w / 2 + 8, Math.min(c, r.left - 8 - w / 2));
+  }
+  bar.style.left = `${Math.round(c)}px`;
+}
+addEventListener('resize', placeHotbar);
+new ResizeObserver(placeHotbar).observe($('#chat'));
+$('#hotbar').addEventListener('wheel',(e) => { e.preventDefault(); if (e.deltaY) A.barScroll(Math.sign(e.deltaY)); }, { passive: false });
 function renderHotbar() {
   const P = A.player; if (!P) return;
   const inv = P.inventory || {};
-  A.slots = ['azada', 'regadera', ...(inv.cana ? ['cana'] : []), ...SEEDS.filter((s) => inv[s] > 0), ...Object.keys(D.ITEMS).filter((k) => isDrink(k) && inv[k] > 0)].slice(0, 10);
-  if (!A.slots.includes(A.sel)) A.sel = 'azada';
+  const pages = barOrder(inv);
+  const fixed = ['azada', 'regadera', inv.cana ? 'cana' : null], cafe = inv.cafe > 0 ? 'cafe' : null;
+  if (![...fixed, ...A.bar, cafe].includes(A.sel)) A.sel = 'azada';
+  if (A.barPage == null) A.barPage = Math.floor(Math.max(0, A.bar.indexOf(A.sel)) / BAR_N);   // al entrar, la página de lo que llevas en la mano
+  A.barPage = Math.max(0, Math.min(pages - 1, A.barPage));
+  const mid = Array.from({ length: BAR_N }, (_, j) => A.bar[A.barPage * BAR_N + j] || null);
+  A.slots = [...fixed, ...mid, cafe];
+  // los huecos vacíos del final no se pintan (con varias páginas sí, para que las flechas no bailen)
+  const last = pages > 1 ? BAR_N - 1 : mid.reduce((m, id, j) => (id ? j : m), -1);
   const bar = $('#hotbar'); bar.innerHTML = '';
+  const arrow = (dir) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'bar-arrow';
+    b.title = dir < 0 ? 'Semillas anteriores (tecla , o la rueda del ratón)' : 'Más semillas (tecla . o la rueda del ratón)';
+    b.innerHTML = dir < 0 ? '‹' : `›<small>${A.barPage + 1}/${pages}</small>`;
+    b.addEventListener('click', () => A.barScroll(dir));
+    bar.append(b);
+  };
   A.slots.forEach((id, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'slot' + (id === A.sel ? ' on' : '');
-    const shown = D.toolUpgrade(inv, id) || id;   // la azada y la regadera se ven como su mejor mejora (A05)
-    b.title = D.ITEMS[shown].name + (isDrink(id) ? ' (pulsa otra vez para tomarlo)' : '');
-    b.append(scaled(G.itemIcon(shown)));
-    b.insertAdjacentHTML('beforeend', `<span class="k">${(i + 1) % 10}</span>${D.ITEMS[id].kind !== 'tool' ? `<span class="n">${inv[id]}</span>` : ''}`);
-    b.addEventListener('click', () => A.selectSlot(i));
+    const m = i - fixed.length, isMid = m >= 0 && m < BAR_N;
+    if (m === 0 && pages > 1) arrow(-1);
+    if (m === BAR_N && pages > 1) arrow(1);
+    if (!id && (!isMid || m > last)) return;
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'slot' + (id && id === A.sel ? ' on' : '') + (id ? '' : ' empty') + ((m === 0 || m === BAR_N) && pages < 2 ? ' gap' : '');
+    b.insertAdjacentHTML('beforeend', `<span class="k">${(i + 1) % 10}</span>`);
+    if (id) {
+      const shown = D.toolUpgrade(inv, id) || id;   // la azada y la regadera se ven como su mejor mejora (A05)
+      b.title = D.ITEMS[shown].name + (isDrink(id) ? ' (pulsa otra vez para tomarlo)' : '');
+      b.prepend(scaled(G.itemIcon(shown)));
+      if (D.ITEMS[id].kind !== 'tool') b.insertAdjacentHTML('beforeend', `<span class="n">${inv[id]}</span>`);
+      b.addEventListener('click', () => A.selectSlot(i));
+    } else { b.disabled = true; b.title = 'Hueco libre'; }
     bar.append(b);
   });
+  placeHotbar();
 }
 function tickHud() {
   if (!A.player || !A.world?.map) return;

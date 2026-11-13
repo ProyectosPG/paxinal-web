@@ -98,6 +98,7 @@ export class World extends Phaser.Scene {
     if (k === ' ' || k === 'e' || k === 'enter') this.act();
     else if (k === 'escape') this.app.cancelMode();
     else if (/^[0-9]$/.test(k)) this.app.selectSlot(k === '0' ? 9 : Number(k) - 1);
+    else if (k === ',' || k === '.') this.app.barScroll(k === ',' ? -1 : 1);   // (A13) más semillas en la barra
     else if (k === '+' || k === '=') this.setZoom(this.zoom + 1);
     else if (k === '-') this.setZoom(this.zoom - 1);
   }
