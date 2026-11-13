@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Páxinal Crossing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+</head>
+<body>
+<div id="game"></div>
+<div id="bubbles"></div>
+
+<!-- marcador -->
+<div id="hud" hidden>
+  <div class="hud-box" id="hud-place">
+    <div class="place" id="hud-map">Paximiña de Arousa</div>
+    <div class="sub"><span id="hud-clock">--:--</span> · <span id="hud-season"></span> · <span id="hud-weather"></span></div>
+    <div class="sub" id="hud-train"></div>
+  </div>
+  <div class="hud-box" id="hud-me">
+    <canvas id="hud-avatar" width="16" height="22"></canvas>
+    <div class="me-txt">
+      <div class="nick" id="hud-nick"></div>
+      <div class="money"><span id="hud-money-ico"></span><b id="hud-money">0</b> paxetas</div>
+      <div class="energy" title="Energía: se gasta al trabajar la tierra y se recupera con café (y sola cada mañana a las 6:00)">
+        <span class="lbl">☕</span><span class="bar"><i id="hud-energy-bar"></i></span><b id="hud-energy">100</b>
+      </div>
+    </div>
+    <div class="me-btns">
+      <button type="button" id="btn-map" title="Mapa del pueblo (M)">🗺️</button>
+      <button type="button" id="btn-bag" title="Mochila (I)">🎒</button>
+      <button type="button" id="btn-deco" title="Decorar tu casa (B)" hidden>🛋️</button>
+      <button type="button" id="btn-menu" title="Opciones">⚙️</button>
+    </div>
+  </div>
+  <div class="hud-box" id="guide" hidden></div>
+  <div id="tileinfo" hidden></div>
+  <div id="hotbar"></div>
+  <div id="deco" hidden>
+    <div class="deco-head"><b>Decorar</b> <span class="muted" id="deco-help">Elige un mueble y haz clic donde quieras ponerlo.</span></div>
+    <div class="deco-items" id="deco-items"></div>
+    <div class="deco-btns"><button type="button" id="deco-pick">Quitar muebles</button><button type="button" id="deco-done">Terminar</button></div>
+  </div>
+</div>
+
+<!-- diálogo de los vecinos y carteles -->
+<div id="talk" hidden><div class="who" id="talk-who"></div><div class="txt" id="talk-txt"></div><div class="more">Espacio ▸</div></div>
+
+<!-- CHAT (flotante): parodia de IPMsg LogViewer, el chat de la oficina, como en Paximón -->
+<div id="chat" class="chat ipm collapsed" hidden>
+  <button class="chat-head ipm-titlebar" id="chat-toggle" type="button" title="Abrir o minimizar el chat (T)">
+    <img class="ipm-ico" id="chat-ico" alt="">
+    <span class="ipm-title">IPaxMsg LogViewer</span>
+    <span class="unread" id="chat-unread" hidden>0</span>
+    <span class="ipm-winbtns" aria-hidden="true"><i>—</i><i>☐</i><i>✕</i></span>
+  </button>
+  <div class="chat-body">
+    <div class="ipm-menu" aria-hidden="true"><span>File</span><span>Settings</span><span>Window</span><span>Print</span><span>Help</span></div>
+    <div class="ipm-tabs"><span class="ipm-tab"><span id="chat-scope">All</span> <b>×</b></span><span class="ipm-plus">+</span></div>
+    <div class="ipm-toolbar">
+      <div class="ipm-tools" id="chat-emotes"></div>
+      <select id="chat-filter" title="Filtrar por persona"><option value="">All Users</option></select>
+    </div>
+    <div class="chat-msgs ipm-log" id="chat-msgs"></div>
+    <form id="chat-form" class="ipm-send">
+      <textarea id="chat-input" rows="2" maxlength="300" placeholder="Escribe aquí… (Enter envía, Mayús+Enter salta de línea; doble clic en un mensaje para citarlo)"></textarea>
+      <button class="ipm-btn" type="submit">Send</button>
+    </form>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+<div id="screen"></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
