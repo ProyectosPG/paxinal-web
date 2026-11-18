@@ -87,6 +87,8 @@ function drawBase(A) {
 // dónde está alguien: casilla en el plano y una frase («en la Praza da Fonte», «dentro de la cafetería»…)
 function placeOf(A, map, px, py) {
   if (!map) return null;
+  // Albacete no sale en el plano del pueblo: quien está allí se pinta en el andén, con su frase
+  if (map === 'albacete' || map === 'alejandro') return { id: 'vila', x: 49, y: 10.6, txt: map === 'alejandro' ? 'en Albacete, en casa de Alejandro' : 'en Albacete (que le sea leve)', inside: true, tag: ' (en Albacete)' };
   if (LAYOUT[map]) {
     const tx = px / 16, ty = py / 16;
     return { id: map, x: tx, y: ty, txt: zoneName(A, map, tx, ty) };
@@ -162,7 +164,7 @@ export function openMapa(A) {
       if (p.me || (focus === p.id && t - focusT < 3000)) { const r = 9 + 5 * ((t / 600) % 1); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.lineWidth = 2; g.strokeStyle = `rgba(255,255,255,${1 - ((t / 600) % 1)})`; g.stroke(); }
       dot(g, x, y, p.me ? 6 : 5, col, '#FFFFFF');
       g.lineWidth = 2; g.strokeStyle = '#2B2230'; g.beginPath(); g.arc(x, y, p.me ? 7 : 6, 0, Math.PI * 2); g.stroke();
-      const tag = (p.me ? 'Tú' : p.name) + (p.at.inside ? ' (dentro)' : '');
+      const tag = (p.me ? 'Tú' : p.name) + (p.at.tag || (p.at.inside ? ' (dentro)' : ''));
       g.font = '600 12px "Pixelify Sans", monospace';
       const tw = g.measureText(tag).width + 10, up = y - 20 - k * 17, ty = up < 10 ? y + 20 + k * 17 : up;
       g.fillStyle = 'rgba(30,24,40,.86)'; g.fillRect(Math.round(x - tw / 2), Math.round(ty - 8), Math.round(tw), 16);

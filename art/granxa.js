@@ -11,6 +11,7 @@ import { paintObject as paintPx, TILES, text, textW, flipPix } from './paximon/w
 import { shade } from './paximon/avatar.js';
 import { seaIcon } from './mar.js';
 import * as V from './vila.js';
+import * as AB from './albacete.js';
 
 export { T };
 
@@ -108,6 +109,9 @@ const NEW_PAINTERS = {
   tobogan: () => V.tobogan(),
   palleiro: () => V.palleiro(),
   pozo: () => V.pozo(),
+  cuchillero: () => AB.cuchillero(),
+  templete: () => AB.templete(),
+  despensa: () => AB.despensa(),
 };
 // La web que venden Brais y Vanesa, enmarcada para colgar: navegador, cabecera, foto y botones
 function webFrame() {
@@ -658,7 +662,7 @@ export function itemIcon(id) {
   const p = new Pix(16, 16);
   if (id.startsWith('sem_')) { const k = id.slice(4); packet(p, SEED_COLORS[k] || '#9E9E9E', k); }
   else if (seaIcon(id, p)) { /* peces, basura del mar, caña, pienso y productos de los animales */ }
-  else (ICONS[id] || ICONS[id.startsWith('m_') ? 'furni' : ''] || ((q) => q.rect(4, 4, 8, 8, '#9E9E9E')))(p);
+  else (ICONS[id] || AB.ALBA_ICONS[id] || ICONS[id.startsWith('m_') ? 'furni' : ''] || ((q) => q.rect(4, 4, 8, 8, '#9E9E9E')))(p);
   p.outline(OUT);
   return (iconCache[id] = p.toCanvas());
 }
@@ -704,6 +708,8 @@ export function fxParticle(kind) {
     drop: [2, 3, ['a.', 'ab', 'bb'], { a: '#CFEAFF', b: '#4C9BFF' }],
     leaf: [3, 3, ['.a.', 'aab', '.b.'], { a: '#8BC34A', b: '#4E8A2A' }],
     dust: [2, 2, ['ab', 'bb'], { a: '#FFF4D6', b: '#D9C9A3' }],
+    spark: [3, 3, ['.a.', 'aba', '.a.'], { a: '#FFE082', b: '#FFFFFF' }],   // navajazo (Albacete)
+    star: [3, 3, ['a.a', '.b.', 'a.a'], { a: '#FFD54F', b: '#FFFFFF' }],
   }[kind] || [1, 1, ['a'], { a: '#FFFFFF' }];
   const [w, h, rows, C] = P, p = new Pix(w, h);
   rows.forEach((r, y) => [...r].forEach((ch, x) => { if (C[ch]) p.px(x, y, C[ch]); }));

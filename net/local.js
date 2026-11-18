@@ -1,7 +1,7 @@
 // Páxinal Crossing · modo local: el mismo «servidor» que supabase/schema.sql pero dentro del
 // navegador (localStorage) y con las pestañas hablando entre sí por BroadcastChannel. Sirve para
 // probar el juego sin tocar la base de datos (?local en la dirección) y con dos pestañas a la vez.
-import { DEPTS, DEPT_BY_ID, CROPS, ITEMS, FURNI_BY_ID, HOUSE, FIELD, ENERGY_MAX, START_PAXETAS, ANIMALS, CORRAL_MAX, CAFE_HOURS, BONSAI_HOURS, LONXA_HOURS, AUCTION_HOURS, PICANTE_LONXA, FISH_TABLE, TRASH, SEASON_BONUS, OMNEA_LOOT, GIFT_PLOTS, START_INV, START_INV_JOIN, TOOL_AREA, deskZone } from '../core/data.js';
+import { DEPTS, DEPT_BY_ID, CROPS, ITEMS, FURNI_BY_ID, HOUSE, FIELD, ENERGY_MAX, START_PAXETAS, ANIMALS, CORRAL_MAX, CAFE_HOURS, BONSAI_HOURS, LONXA_HOURS, AUCTION_HOURS, PICANTE_LONXA, FISH_TABLE, TRASH, SEASON_BONUS, OMNEA_LOOT, GIFT_PLOTS, START_INV, START_INV_JOIN, TOOL_AREA, ALBA_LOOT, deskZone } from '../core/data.js';
 import * as R from '../core/rules.js';
 
 const KEY = 'paxinal.localdb';
@@ -197,9 +197,10 @@ export function createLocal() {
     },
     async drink({ p_secret, p_item = 'cafe' }) {
       const db = load(), p = auth(db, p_secret), it = ITEMS[p_item];
-      if (it?.kind !== 'drink') fail('Eso no se bebe.');
-      if (!p.inventory[p_item]) fail('No te queda café.');
-      if (p.energy >= ENERGY_MAX) fail('Ya estás a tope. Un café más y ves los sonidos.');
+      if (it?.kind !== 'drink' && it?.kind !== 'food') fail('Eso no se bebe.');
+      if (!p.inventory[p_item]) fail(it.kind === 'food' ? 'No te queda.' : 'No te queda café.');
+      // la comida de Albacete se puede tomar con la energía a tope (lo que cura es la salud, que lleva el navegador)
+      if (it.kind === 'drink' && p.energy >= ENERGY_MAX) fail('Ya estás a tope. Un café más y ves los sonidos.');
       add(p, p_item, -1); p.energy = Math.min(ENERGY_MAX, p.energy + it.energy); save(db);
       return me(p);
     },
@@ -213,6 +214,28 @@ export function createLocal() {
       const s = { id: db.seq++, player: p.id, item: p_item, qty: n, value, created_at: now, pay_at: R.payAt(now, late), late, paid: false };
       db.shipments.push(s); save(db);
       return { player: me(p), shipment: s };
+    },
+    // Albacete: el botín de un navajero tumbado. El combate se juega en el navegador (como la pesca) y el
+    // servidor solo decide qué llevaba encima: unas paxetas y, a veces, una cosa. Como mucho ALBA_LOOT.daily
+    // botines al día (y 2 del Sartenero), y no más de uno cada 2 segundos.
+    async albacete_loot({ p_secret, p_kind }) {
+      const db = load(), p = auth(db, p_secret), now = Date.now(), day = R.energyDay(clock()), boss = p_kind === 'boss';
+      if (!['normal', 'boss'].includes(p_kind)) fail('Eso no deja botín.');
+      if (now - (p.alba_last || 0) < 2000) fail('Espera un poco entre navajero y navajero.');
+      if (p.alba_day !== day) { p.alba_day = day; p.alba_n = 0; p.alba_boss = 0; }
+      p.alba_last = now;
+      const L = boss ? ALBA_LOOT.boss : ALBA_LOOT;
+      if (boss ? p.alba_boss >= L.daily : p.alba_n >= L.daily) { save(db); return { player: me(p), loot: { paxetas: 0, item: null, capped: true } }; }
+      if (boss) p.alba_boss++; else p.alba_n++;
+      const paxetas = L.pax[0] + Math.floor(Math.random() * (L.pax[1] - L.pax[0] + 1));
+      let item = boss ? L.item : null;
+      if (!boss) {
+        let r = Math.random() * (L.none + L.items.reduce((s, [, w]) => s + w, 0)) - L.none;
+        if (r > 0) for (const [id, w] of L.items) { r -= w; if (r <= 0) { item = id; break; } }
+      }
+      p.paxetas += paxetas; if (item) add(p, item, 1);
+      save(db);
+      return { player: me(p), loot: { paxetas, item, capped: false } };
     },
     // pescar: el minijuego se juega en el navegador y manda la habilidad (0-1); el servidor decide qué sale
     async fish({ p_secret, p_spot, p_skill }) {

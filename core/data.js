@@ -124,6 +124,19 @@ export const ITEMS = {
   ovo: { name: 'Huevo (lead)', kind: 'produce', sell: 25, desc: 'Un lead fresquito. Hay que llamarlo antes de que se enfríe.' },
   leite: { name: 'Leche de rubia gallega', kind: 'produce', sell: 70 },
   la: { name: 'Lana', kind: 'produce', sell: 110 },
+  // Albacete: navajas mejores (Museo de la Cuchillería), provisiones (casa de Alejandro) y botín de los navajeros.
+  // La navaja de recuerdo va con el billete de tren y no es un objeto. hp: la salud que da la comida (la salud
+  // solo vive en el navegador; el servidor solo sabe que la comida se puede tomar con la energía a tope).
+  navaja_albacete: { name: 'Navaja clásica de Albacete', kind: 'tool', price: 600, shop: 'cuchilleria', desc: 'Con su carraca y sus cachas de asta. Pega bastante más que la de recuerdo de la estación.' },
+  navaja_7muelles: { name: 'Navaja de siete muelles', kind: 'tool', price: 1800, shop: 'cuchilleria', desc: 'Suena siete veces al abrirse y en el Altozano se hace el silencio. La que más pega.' },
+  miguelito: { name: 'Miguelito de La Roda', kind: 'food', price: 12, energy: 5, hp: 25, shop: 'alejandro', desc: '+25 de salud y +5 de energía. Hojaldre, crema y azúcar glas por toda la camiseta.' },
+  bocata_manchego: { name: 'Bocadillo de lomo con queso manchego', kind: 'food', price: 30, energy: 10, hp: 55, shop: 'alejandro', desc: '+55 de salud y +10 de energía. Lo hace la madre de Alejandro, y se nota.' },
+  gazpacho_manchego: { name: 'Gazpacho manchego', kind: 'food', price: 60, energy: 20, hp: 100, shop: 'alejandro', desc: 'Salud a tope y +20 de energía. No es el frío: lleva torta, conejo y setas, y te deja nuevo.' },
+  reloj_casio: { name: 'Reloj que sí da la hora', kind: 'botin', sell: 45, desc: 'Se lo quitaste a uno que te pidió la hora. Las vueltas que da la vida.' },
+  mechero: { name: 'Mechero de propaganda', kind: 'botin', sell: 8, desc: 'Pone «Bar La Zona». No se sabe cuánto gas le queda.' },
+  navaja_ronosa: { name: 'Navaja roñosa', kind: 'botin', sell: 25, desc: 'No corta ni el queso. En la caja de envíos te la compran como antigüedad.' },
+  cigarro: { name: 'Cigarrico suelto', kind: 'botin', sell: 3, desc: 'El que te pedían. Al final lo llevaban ellos.' },
+  sarten_feria: { name: 'Sartén de la Feria', kind: 'botin', sell: 220, desc: 'El trofeo del Sartenero. Con su mango y todo, como el recinto ferial.' },
 };
 export const SEASON_BONUS = 1.25;
 // (A05) qué hace cada mejora: la herramienta de la barra a la que mejora, la forma (línea de 3 hacia delante
@@ -366,3 +379,69 @@ export function renfeLine(t, pick = Math.random()) {
     `Renfe informa: el tren con destino ${dest} va a efectuar su salida. Ojo al hueco entre el tren y el andén.`][Math.floor(pick * 3)];
 }
 export const NIGHT_TRAIN = 'Renfe Mercancías informa: el tren de la noche pasa a recoger las cajas de envíos. Se paga mañana por la mañana.';
+
+// =====================================================================
+// ALBACETE (se llega en el tren que nunca llegaba). Zona de combate: aquí todo el mundo lleva navaja.
+// La gente pasea y a veces se te acerca a pedirte la hora y luego un cigarro: unos dan las gracias y se
+// van, y otros sacan la navaja. No se sabe quién es quién hasta que acaba de preguntar. La salud y los
+// paisanos solo viven en tu navegador (cada pantalla ve los suyos); el botín lo da el servidor.
+// =====================================================================
+export const HP_MAX = 100;
+export const HP_KO = 40;   // la salud con la que despiertas en casa de Alejandro
+// daño de tu navaja según la mejor que tengas (la de recuerdo, si no tienes ninguna)
+export const NAVAJAS = [
+  { id: 'navaja_7muelles', dmg: [44, 58] },
+  { id: 'navaja_albacete', dmg: [30, 40] },
+  { id: null, name: 'Navaja de recuerdo', dmg: [18, 26] },
+];
+export const myNavaja = (inv) => NAVAJAS.find((n) => !n.id || (inv?.[n.id] || 0) > 0);
+// clases de gente. hostile: de 0 a 1, cuántos de esa clase sacan la navaja (de noche, algo más);
+// hp, speed (px/s persiguiendo) y dmg [mín, máx] por navajazo. tag: lo que pone en su cartel hasta que se descubre.
+export const ALBA_FOLK = [
+  { id: 'chaval', tag: 'Chaval', hostile: 0.7, hp: 50, speed: 74, dmg: [7, 11], n: 4,
+    looks: [[{ skin: 1, hair: 0, style: 'corto' }, '#1B1B22', ['cap:#C62828']], [{ skin: 2, hair: 4, style: 'corto' }, '#2E7D32', ['cap:#111111']], [{ skin: 0, hair: 1, style: 'rizos' }, '#6A1B9A', []]] },
+  { id: 'paisano', tag: 'Paisano', hostile: 0.5, hp: 70, speed: 58, dmg: [10, 15], n: 4,
+    looks: [[{ skin: 2, hair: 6, style: 'corto' }, '#5D4037', ['cap:#3E2723', 'mustache']], [{ skin: 1, hair: 0, style: 'corto' }, '#37474F', ['mustache']], [{ skin: 1, hair: 4, style: 'corto' }, '#8D6E63', ['cap:#263238']]] },
+  { id: 'senora', tag: 'Señora', hostile: 0.25, hp: 60, speed: 52, dmg: [13, 18], n: 3,
+    looks: [[{ skin: 0, hair: 6, style: 'mono' }, '#AD1457', ['glasses', 'case']], [{ skin: 1, hair: 3, style: 'mono' }, '#00838F', ['case']]] },
+  { id: 'abuelo', tag: 'Abuelo', hostile: 0.15, hp: 90, speed: 42, dmg: [18, 24], n: 2,
+    looks: [[{ skin: 1, hair: 6, style: 'corto' }, '#4E342E', ['cap:#212121', 'mustache', 'glasses']], [{ skin: 2, hair: 6, style: 'corto' }, '#455A64', ['cap:#3E2723']]] },
+  { id: 'runner', tag: 'Runner', hostile: 0, hp: 40, speed: 95, dmg: [0, 0], n: 1,
+    looks: [[{ skin: 1, hair: 5, style: 'mono' }, '#F4511E', ['sunglasses']]] },
+];
+// el jefe del recinto ferial: siempre sale a por ti y no se aleja de la Feria
+export const ALBA_BOSS = { id: 'sartenero', tag: 'El Sartenero', name: 'El Sartenero', hostile: 1, hp: 240, speed: 62, dmg: [18, 26], look: { skin: 2, hair: 0, style: 'corto' }, shirt: '#B71C1C', extras: ['mustache', 'apron'], respawn: 300 };
+export const ALBA_NIGHT = 0.2;   // de 21:00 a 7:00 hay más gente y más navajas (se suma a hostile)
+export const ALBA_LINES = {
+  ask1: ['¿Tienes hora?', '¿Qué hora llevas, chacho?', 'Perdona, ¿tienes hora?', '¿Me dices la hora, bonico?'],
+  ask2: ['¿Y un cigarro?', '¿No tendrás un cigarrico?', '¿Y fuego? ¿Y un cigarro?', 'Ya… ¿y un cigarro tienes?'],
+  thanks: ['Gracias, bonico.', 'Hala, con Dios.', 'Qué majo. Así da gusto.', 'Pues nada, a mandar.', 'Gracias, hermoso. Ve con cuidado.'],
+  reveal: ['Pues dame lo que lleves.', 'Mala respuesta, bonico.', '¿Ni hora ni tabaco? Pues te vas a enterar.', 'Era por no sacarla de buenas a primeras.', '¡Suelta la cartera, que pincho!'],
+  ignored: ['¡Eh, que te estoy hablando!', '¡No me dejes con la palabra en la boca!', '¿Adónde vas? ¡Ven aquí!'],
+  shrug: ['Qué prisas lleva la gente.', 'Ni buenas tardes, oye.', 'Estos de fuera…'],
+  hit: ['¡Ay!', '¡Copón!', '¡Me cago en la mar!', '¡Uy!', '¡Chacho!'],
+  flee: ['¡Que me matan!', '¡Me voy, me voy!', '¡Esto no queda así!'],
+  ko: ['Ya me iba yo…', 'Dile a mi madre que no ceno.', 'Ay… avisad a Alejandro.', 'Me has dao bien, ¿eh?'],
+  innocent: ['¡Pero qué haces, criatura!', '¡Socorro, que este no es de aquí!', '¡Pero si yo iba a por pan!', '¡Policía! Bueno, da igual.'],
+  mob: ['¡A por el forastero!', '¡Ese, el que no es de aquí!', '¡Que no escape!'],
+  leash: ['¡Corre, corre!', '¡Y no vuelvas!', 'Bah. Otro día.'],
+  runner: ['¡Aire, aire!', '¡Que voy con el crono!', '¡Paso, paso!'],
+  boss: ['¡¿Quién pisa mi Sartén?!', '¡Aquí la hora la doy yo!', '¡Diez días de Feria y me vienes tú!'],
+};
+export const ALEJANDRO = { name: 'Alejandro', look: { skin: 1, hair: 0, style: 'corto' }, shirt: '#1565C0', extras: ['glasses'] };
+export const ALEJANDRO_LINES = [
+  '¿Otra vez te han pedido la hora? Tú di siempre que sí. O que no. Da igual, la verdad.',
+  'En mi casa no entra nadie con la navaja abierta. Bueno, mi abuela sí, pero es para el queso.',
+  'Échate en el sofá y te recuperas. Y si quieres provisiones, en la despensa hay de todo: se paga en paxetas.',
+  'El Altozano de día está bien. De noche… de noche mejor los miguelitos y a casa.',
+  'Si llegas hasta la Feria, cuidado con el Sartenero. Lleva ahí desde septiembre.',
+  '¿Que de dónde soy? De Albacete, chacho. ¿No has visto cómo corto el jamón?',
+];
+export const ALEJANDRO_KO = [
+  'Te he traído yo. Estabas tirado en el suelo diciendo «son las cinco y cuarto».',
+  'Menos mal que pasaba por allí. Anda, cómete un miguelito, que estás blanco.',
+  'Otra vez. A este paso te pongo una cama fija.',
+];
+// lo que suelta un navajero al caer: paxetas [mín, máx] y, a veces, una cosa (lo decide el servidor)
+export const ALBA_LOOT = { pax: [6, 16], items: [['cigarro', 30], ['mechero', 22], ['navaja_ronosa', 16], ['reloj_casio', 8]], none: 24, daily: 30,
+  boss: { pax: [120, 180], item: 'sarten_feria', daily: 2 } };

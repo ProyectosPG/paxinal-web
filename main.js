@@ -316,6 +316,7 @@ A.onMapLoaded = (map) => {
   syncRemotes();
   A.world.setShipFull(A.shipments.length > 0);
   A.refreshBoard();
+  renderHp();
 };
 A.onTrain = (t) => {
   if (A.world.map.id !== 'vila') return;
@@ -331,6 +332,8 @@ A.door = (d) => {
   if (d.to === 'lonxa') return R.inHours(R.hourOf(A.now()), D.LONXA_HOURS) ? goTo('lonxa') : talk('Cartel en la puerta', D.LONXA_CLOSED);
   if (d.to === 'bonsai') return bonsaiOpen() ? goTo('bonsai') : talk('Cartel en la puerta', D.BONSAI_CLOSED);
   if (d.to?.startsWith('casa:')) return goTo(d.to);
+  if (d.shop === 'cuchilleria') return cuchilleriaShop();
+  if (d.to && A.maps[d.to]) return goTo(d.to, d.tx != null ? { x: d.tx, y: d.ty, dir: 'up' } : null);
   if (d.text) talk(d.label || null, d.text);
 };
 A.exit = (e) => {
@@ -341,7 +344,7 @@ A.exit = (e) => {
   }
   goTo(e.to, { x: e.tx, y: e.ty, dir: e.dir });
 };
-function goTo(id, at = null) {
+function goTo(id, at = null, then = null) {
   const cam = A.world.cameras.main;
   if (A.going) return;
   A.going = true;
@@ -351,6 +354,7 @@ function goTo(id, at = null) {
     A.world.loadMap(id, at);
     A.world.cameras.main.fadeIn(160, 0, 0, 0);
     A.going = false;
+    then?.();
   });
 }
 A.spot = (s) => {
@@ -363,6 +367,9 @@ A.spot = (s) => {
     case 'shop_naval': return navalShop();
     case 'gull': return talk('La gaviota', ['La gaviota te mira el bocadillo. Tú miras a la gaviota. Nadie parpadea.', '«¡Kiaaa!» (Traducción: «¿Eso que llevas se come?»)', 'Ni se te ocurra dejar el bocadillo en el suelo.'][Math.floor(Math.random() * 3)]);
     case 'departures': return departuresPanel();
+    case 'departures_alba': return departuresAlba();
+    case 'siesta': return siesta();
+    case 'shop_alejandro': return alejandroShop();
     case 'ship': return shipBox(s.dept);
     case 'catalog': return catalog();
     case 'house_info': return houseInfo(s.dept);
@@ -382,6 +389,7 @@ A.talk = (n) => {
       [c.name, `¡Oferta solo por hoy! ${D.ITEMS[deal].name} a ${R.priceOf(deal, A.now())} paxetas en vez de ${D.ITEMS[deal].price}. Mañana, otra. Bueno, la misma.`]], () => comShop(c));
   }
   if (n.who === 'coop') return talk(n.name, D.COOP_LINES[Math.floor(Math.random() * D.COOP_LINES.length)], coopShop);
+  if (n.who === 'alejandro') return talk(n.name, D.ALEJANDRO_LINES[Math.floor(Math.random() * D.ALEJANDRO_LINES.length)]);
   if (n.who === 'vecino') return talk(n.name, n.lines[Math.floor(Math.random() * n.lines.length)]);   // vecinos de A Vila (A11)
   if (n.who === 'poxador') {
     const h = R.hourOf(A.now()), auction = R.inHours(h, D.AUCTION_HOURS);
@@ -407,7 +415,7 @@ A.clickPlayer = (id) => {
   mo.el.querySelector('#pc-msg').addEventListener('click', () => { mo.close(); chat.open(); const i = $('#chat-input'); i.value = `@${m.nickname} `; i.focus(); });
 };
 A.furniInfo = (r) => { const f = D.FURNI_BY_ID[r.kind]; toast(`${f?.name || r.kind} · lo puso ${r.owner_nick}`); };
-const isDrink = (id) => D.ITEMS[id]?.kind === 'drink';
+const isDrink = (id) => ['drink', 'food'].includes(D.ITEMS[id]?.kind);   // lo que se toma: bebidas y la comida de Albacete
 A.actNothing = () => { if (isDrink(A.sel)) drink(A.sel); };
 A.selectSlot = (i) => { const id = A.slots[i]; if (!id) return; if (id === A.sel && isDrink(id)) return drink(id); A.sel = id; localStorage.setItem(LS.sel, id); renderHotbar(); Sound.play('select', 0.2); };
 A.cancelMode = () => { if (!$('#deco').hidden) closeDeco(); };
@@ -524,6 +532,7 @@ async function useArea(field, area) {
   finally { A.busy = false; }
 }
 async function drink(id = 'cafe') {
+  if (D.ITEMS[id]?.kind === 'food') return eat(id);
   if (!A.player.inventory[id]) return toast('No te queda café. Diego y Sabrina tienen (y de noche, el Bonsai).');
   if (A.player.energy >= D.ENERGY_MAX) return toast('Ya estás a tope. Un café más y ves los sonidos.');
   try { setPlayer(await net.rpc('drink', { p_secret: A.player.secret, p_item: id })); Sound.play('coffee'); A.guide.event('drink', { item: id }); toast(id === 'cafe_bonsai' ? `Mmm… sabe a cenicero. Energía: ${A.player.energy}.` : `¡Café! Energía: ${A.player.energy}.`, 'good'); }
@@ -601,6 +610,107 @@ A.useOnWater = async (f) => {
   finally { A.fishing = false; }
 };
 
+// ---------- Albacete ----------
+// La salud (♥) solo existe en Albacete y se guarda en el navegador, por jugador. Se recupera comiendo o
+// echándose en el sofá de Alejandro. Si llega a cero, despiertas en su casa. El botín lo da el servidor.
+const albaKey = () => `paxinal.albacete.${net.kind}.${A.player.id}`;
+function alba() {
+  if (A.albaFor !== A.player.id) {
+    A.albaFor = A.player.id;
+    let s = null; try { s = JSON.parse(localStorage.getItem(albaKey())); } catch { /* sin datos */ }
+    A.albaSt = { hp: D.HP_MAX, wins: 0, kos: 0, seen: false, ...(s || {}) };
+  }
+  return A.albaSt;
+}
+const albaSave = () => localStorage.setItem(albaKey(), JSON.stringify(alba()));
+const pickLine = (a) => a[Math.floor(Math.random() * a.length)];
+function renderHp() {
+  if (!A.player) return;
+  const st = alba(), m = A.world?.map;
+  $('#hud-hp-row').hidden = !(m && (m.J.combat || m.id === 'alejandro'));
+  $('#hud-hp').textContent = st.hp;
+  $('#hud-hp-bar').style.width = `${Math.max(0, Math.min(100, (st.hp / D.HP_MAX) * 100))}%`;
+}
+function toAlbacete() {
+  const st = alba(), first = !st.seen;
+  st.seen = true; albaSave();
+  talkSeq([['Megafonía de Renfe', 'Atención: el tren con destino Albacete, que traía un retraso indeterminado desde 2019, va a efectuar su salida. Disculpen las molestias.'],
+    ...(first ? [[null, 'Aviso: en Albacete todo el mundo lleva navaja. Con el billete te dan una de recuerdo: allí, con Espacio das un navajazo a lo que tengas delante.'],
+      [null, 'La gente se te acercará a pedirte la hora y un cigarro. Unos dan las gracias y se van; otros sacan la navaja. Cuando uno parpadea en amarillo va a pinchar: apártate.'],
+      [null, 'Tu salud es la barra ♥. Se recupera con comida o en el sofá de la casa de Alejandro, al este de la estación, que es zona segura. Si te dejan K.O., despiertas allí.']] : [])],
+  () => goTo('albacete'));
+}
+function departuresAlba() {
+  const mo = openModal(`<div class="departures"><div class="dep-head"><span>SALIDAS · ALBACETE-LOS LLANOS</span><span>${R.clockText(A.now())}</span></div>
+    <table><tr><th>Hora</th><th>Destino</th><th>Vía</th><th>Observaciones</th></tr>
+    <tr><td>Ya</td><td>Paximiña de Arousa</td><td>1</td><td>En hora. Nadie se lo explica.</td></tr>
+    <tr><td>13:14</td><td>Madrid</td><td>2</td><td><span class="late">RETRASADO · sin hora prevista</span></td></tr>
+    <tr><td>—</td><td>Murcia</td><td>3</td><td><span class="late">SUPRIMIDO · servicio alternativo en mula</span></td></tr></table>
+    <div class="dep-foot">Renfe informa: se ruega no pedir la hora en el andén.</div>
+    <div class="dep-go"><span>Has salido con vida y con ${alba().wins} navajero${alba().wins === 1 ? '' : 's'} tumbado${alba().wins === 1 ? '' : 's'} en total.</span><button class="btn small" type="button" id="dep-back">🚆 Volver a Paximiña</button></div></div>`, { cls: 'wide dep-modal' });
+  mo.el.querySelector('#dep-back').addEventListener('click', () => { mo.close(); talk('Megafonía de Renfe', 'Tren con destino Paximiña de Arousa. Efectuará parada en todas las estaciones, apeaderos y vacas del recorrido.', () => goTo('vila')); });
+}
+A.albaHurt = (n) => {
+  const st = alba();
+  if (A.albaDown || A.going) return;
+  st.hp = Math.max(0, st.hp - n); albaSave(); renderHp();
+  A.world.combat?.hurtFx(n);
+  if (st.hp > 0) return;
+  // K.O.: despiertas en el sofá de Alejandro
+  A.albaDown = true; st.kos++; st.hp = D.HP_KO; albaSave();
+  toast('¡Te han dejado K.O.!', 'error');
+  goTo('alejandro', A.maps.alejandro.wake, () => { A.albaDown = false; renderHp(); talk(D.ALEJANDRO.name, pickLine(D.ALEJANDRO_KO)); });
+};
+A.albaWin = async (kind) => {
+  if (kind === 'innocent') return toast('Ese no te había hecho nada: no hay botín.', 'error');
+  const st = alba(); st.wins++; albaSave();
+  try {
+    const r = await net.rpc('albacete_loot', { p_secret: A.player.secret, p_kind: kind });
+    setPlayer(r.player);
+    const L = r.loot;
+    if (L.capped) return toast('Hoy ya has vaciado todos los bolsillos de Albacete: no llevan nada encima. Mañana, más.');
+    Sound.play('coins', 0.3);
+    toast(`${kind === 'boss' ? '¡Has tumbado al Sartenero! ' : ''}Botín: ${L.paxetas} paxetas${L.item ? ' y ' + D.ITEMS[L.item].name.toLowerCase() : ''}.`, 'good');
+  } catch (e) { toast(e.message, 'error'); }
+};
+let albaTipAt = 0;
+A.albaEvent = (ev) => {
+  const t = performance.now();
+  if (t - albaTipAt < 3500) return;
+  if (ev === 'safe') { albaTipAt = t; toast('Estás en zona segura: aquí no se saca la navaja.'); }
+  else if (ev === 'innocent') { albaTipAt = t; toast('¡Ese era de los pacíficos! Los de alrededor lo han visto.', 'error'); }
+};
+async function eat(id) {
+  const it = D.ITEMS[id], st = alba();
+  if (!A.player.inventory[id]) return toast('No te queda. En la despensa de Alejandro hay más.');
+  if (st.hp >= D.HP_MAX && A.player.energy >= D.ENERGY_MAX) return toast('Estás a tope de salud y de energía. Guárdalo para cuando te pidan la hora.');
+  try {
+    setPlayer(await net.rpc('drink', { p_secret: A.player.secret, p_item: id }));
+    st.hp = Math.min(D.HP_MAX, st.hp + (it.hp || 0)); albaSave(); renderHp();
+    Sound.play('item', 0.4); toast(`${it.name}: salud ${st.hp}/${D.HP_MAX}.`, 'good');
+  } catch (e) { toast(e.message, 'error'); }
+}
+function siesta() {
+  const st = alba();
+  if (st.hp >= D.HP_MAX) return talk(null, 'Te sientas en el sofá de Alejandro. Estás perfectamente, así que solo miras la tele: echan un documental sobre navajas.');
+  const cam = A.world.cameras.main;
+  cam.fadeOut(350, 0, 0, 0);
+  cam.once('camerafadeoutcomplete', () => {
+    st.hp = D.HP_MAX; albaSave(); renderHp();
+    cam.fadeIn(500, 0, 0, 0);
+    talk(null, 'Te echas una siesta de las de pijama y orinal en el sofá de Alejandro. Salud a tope.');
+  });
+}
+function alejandroShop() {
+  const mo = openModal(`<h2>La despensa de Alejandro</h2><p class="lead">«Coge lo que quieras, pero deja las paxetas en el bote.» Tienes <b class="shop-money">${A.player.paxetas}</b> paxetas. La comida se elige en la barra (4-9) y se toma pulsando otra vez.</p><div class="shop"></div>`, { cls: 'wide' });
+  for (const id of ['miguelito', 'bocata_manchego', 'gazpacho_manchego']) mo.el.querySelector('.shop').append(shopRow(id));
+}
+function cuchilleriaShop() {
+  const nav = D.myNavaja(A.player.inventory), name = nav.name || D.ITEMS[nav.id].name;
+  const mo = openModal(`<h2>Museo de la Cuchillería</h2><p class="lead">En la tienda del museo venden navajas de verdad. La tuya: <b>${esc(name)}</b> (de ${nav.dmg[0]} a ${nav.dmg[1]} por navajazo). Tienes <b class="shop-money">${A.player.paxetas}</b> paxetas.</p><div class="shop"></div>`, { cls: 'wide' });
+  for (const n of [...D.NAVAJAS].reverse()) if (n.id) mo.el.querySelector('.shop').append(shopRow(n.id, `${esc(D.ITEMS[n.id].desc)} Daño: de ${n.dmg[0]} a ${n.dmg[1]}.`));
+}
+
 // ---------- tiendas ----------
 const seasonTag = (it) => (it.season && it.season === R.seasonOf(A.now()) ? '<span class="tag-season">de temporada +25 %</span>' : '');
 function shopRow(id, extraDesc = '', onBought = null) {
@@ -634,10 +744,12 @@ function departuresPanel() {
   const now = A.now(), rows = R.departuresFrom(now, 8);
   const obs = (t) => t.albacete ? '<span class="late">RETRASADO · sin hora prevista</span>' : t.cancelled ? '<span class="late">SUPRIMIDO · servicio alternativo por carretera</span>'
     : t.night ? 'Recoge las cajas de envíos' : t.delay ? `<span class="warn">Retraso estimado: ${t.delay} min</span>` : 'En hora';
-  openModal(`<div class="departures"><div class="dep-head"><span>SALIDAS</span><span>${R.clockText(now)}</span></div>
+  const mo = openModal(`<div class="departures"><div class="dep-head"><span>SALIDAS</span><span>${R.clockText(now)}</span></div>
     <table><tr><th>Hora</th><th>Destino</th><th>Vía</th><th>Observaciones</th></tr>
     ${rows.map((t) => `<tr><td>${t.albacete ? '13:14' : R.clockText(t.sched)}</td><td>${esc(D.DESTS[t.dest] || t.dest)}</td><td>1</td><td>${obs(t)}</td></tr>`).join('')}</table>
-    <div class="dep-foot">Renfe informa: consulte el estado de su tren. Disculpen las molestias.</div></div>`, { cls: 'wide dep-modal' });
+    <div class="dep-foot">Renfe informa: consulte el estado de su tren. Disculpen las molestias.</div>
+    <div class="dep-go"><span>Dicen que el de Albacete lleva en vía 1 desde 2019, con las puertas abiertas. Nadie se ha atrevido a subir.</span><button class="btn small" type="button" id="dep-alba">🚆 Subir al tren de Albacete</button></div></div>`, { cls: 'wide dep-modal' });
+  mo.el.querySelector('#dep-alba').addEventListener('click', () => { mo.close(); toAlbacete(); });
 }
 // la tienda de los comerciales: si cierras sin comprar nada, te persiguen un rato
 function comShop(c) {
@@ -784,7 +896,7 @@ function bag() {
     row.innerHTML = `<div></div><div><div class="nm">${esc(it.name)} × ${n}</div><div class="ds">${esc(info)}</div></div><div class="buy"></div>`;
     row.firstChild.append(scaled(it.kind === 'furni' ? furniCanvas(it.furni) : G.itemIcon(id), it.kind === 'furni' ? 'big' : ''));
     const act = row.querySelector('.buy');
-    if (id === 'cafe') { const b = Object.assign(document.createElement('button'), { className: 'btn small', type: 'button', textContent: 'Tomar' }); b.onclick = () => { drink().then(() => { mo.close(); }); }; act.append(b); }
+    if (id === 'cafe' || it.kind === 'food') { const b = Object.assign(document.createElement('button'), { className: 'btn small', type: 'button', textContent: it.kind === 'food' ? 'Comer' : 'Tomar' }); b.onclick = () => { drink(id).then(() => { mo.close(); }); }; act.append(b); }
     if (it.kind === 'furni' && !$('#btn-deco').hidden) { const b = Object.assign(document.createElement('button'), { className: 'btn small', type: 'button', textContent: 'Colocar' }); b.onclick = () => { mo.close(); openDeco(it.furni); }; act.append(b); }
     box.append(row);
   }
@@ -974,12 +1086,13 @@ function tickHud() {
   const now = A.now(), season = R.seasonOf(now), out = A.world.map.outdoor;
   $('#hud-clock').textContent = R.clockText(now);
   $('#hud-season').textContent = `${R.SEASON_NAMES[season]} (${R.SEASON_Q[season]})`;
-  $('#hud-weather').textContent = R.rainy(R.dayKey(now)) ? '🌧 Llueve (normal, es Galicia)' : R.darkness(R.hourOf(now)) > 0.3 ? '🌙 Noche' : '☀️ Despejado';
+  const dry = A.world.map.J.dry, cb = A.world.combat, dark = R.darkness(R.hourOf(now)) > 0.3;
+  $('#hud-weather').textContent = dry ? (dark ? '🌙 Noche (hay más navajas)' : '☀️ Seco (es La Mancha)') : R.rainy(R.dayKey(now)) ? '🌧 Llueve (normal, es Galicia)' : dark ? '🌙 Noche' : '☀️ Despejado';
   const tr = $('#hud-train');
   if (A.world.map.id === 'vila') {
     const st = A.world.railState;
     tr.textContent = st && st !== 'idle' ? '🚆 Pasa el tren…' : A.world.nextTrainAt ? `🚆 Próximo tren: ${R.clockText(A.world.nextTrainAt)}` : '';
-  } else tr.textContent = out ? '' : '';
+  } else tr.textContent = cb ? (cb.isSafe(A.world.me.x, A.world.me.y) ? '🛡️ Zona segura' : `🔪 Zona de navajas · ${D.myNavaja(A.player.inventory).name || D.ITEMS[D.myNavaja(A.player.inventory).id].name}`) : '';
   // qué hay delante
   const ti = $('#tileinfo');
   if (!$('#deco').hidden || A.blocked()) { ti.hidden = true; return; }
@@ -988,13 +1101,14 @@ function tickHud() {
   const beast = !npc && w.animalAt(f.tx, f.ty);
   if (npc) s = `Espacio: hablar con ${npc.name}`;
   else if (beast) { const st = R.animalState(beast.row, A.now()); s = `${beast.row.name} · ${st.ready ? `¡tiene ${D.ITEMS[D.ANIMALS[beast.row.kind].product].name.toLowerCase()}!` : st.fed || !D.ANIMALS[beast.row.kind].product ? 'Espacio: acariciar' : 'tiene hambre'}`; }
-  else if (door) s = door.to ? `Espacio: entrar en ${door.label || 'la casa'}` : 'Espacio: llamar a la puerta';
-  else if (spot) s = { board: 'Espacio: leer el tablón de anuncios', shop: 'Espacio: comprar', shop_bonsai: 'Espacio: pedir un café (si te atreves)', lonxa: 'Espacio: vender en la lonxa', feed: 'Espacio: echar pienso en el comedero', shop_naval: 'Espacio: mirar las cañas', gull: 'Espacio: mirar a la gaviota', departures: 'Espacio: mirar el panel de salidas', ship: 'Espacio: abrir la caja de envíos', catalog: 'Espacio: mirar el catálogo de muebles', house_info: 'Espacio: ver quién vive aquí', duck: 'Espacio: contarle tus penas al pato' }[spot.action] || 'Espacio: leer';
+  else if (door) s = door.to || door.shop ? `Espacio: entrar en ${door.label || 'la casa'}` : 'Espacio: llamar a la puerta';
+  else if (spot) s = { board: 'Espacio: leer el tablón de anuncios', shop: 'Espacio: comprar', shop_bonsai: 'Espacio: pedir un café (si te atreves)', lonxa: 'Espacio: vender en la lonxa', feed: 'Espacio: echar pienso en el comedero', shop_naval: 'Espacio: mirar las cañas', gull: 'Espacio: mirar a la gaviota', departures: 'Espacio: mirar el panel de salidas', departures_alba: 'Espacio: mirar el panel (y volver a Paximiña)', siesta: 'Espacio: echarte en el sofá (recupera la salud)', shop_alejandro: 'Espacio: abrir la despensa de Alejandro', ship: 'Espacio: abrir la caja de envíos', catalog: 'Espacio: mirar el catálogo de muebles', house_info: 'Espacio: ver quién vive aquí', duck: 'Espacio: contarle tus penas al pato' }[spot.action] || 'Espacio: leer';
   else if (field) {
     const p = A.plots.get(`${field.dept}:${field.rx}:${field.ry}`);
     if (A.houseEmpty(field.dept)) s = `Leira de ${D.deptName(field.dept)} (la cuida ${D.DEPT_BY_ID[field.dept].npc.name})`;
     else s = p ? describePlot(p) : field.dept === A.player.house ? 'Hierba de tu leira: ¡ara con la azada!' : `Leira de ${D.deptName(field.dept)}`;
   }
+  if (cb && (cb.threat() || (!s && !cb.isSafe(w.me.x, w.me.y)))) s = 'Espacio: navajazo';
   ti.hidden = !s; ti.textContent = s;
 }
 setInterval(tickHud, 250);
@@ -1002,7 +1116,7 @@ setInterval(tickHud, 250);
 // ---------- arranque ----------
 async function boot() {
   try { await net.init(); } catch (e) { console.error(e); }
-  const ids = ['vila', 'agro', 'cafe', 'casa', 'bonsai', 'peirao', 'lonxa'];
+  const ids = ['vila', 'agro', 'cafe', 'casa', 'bonsai', 'peirao', 'lonxa', 'albacete', 'alejandro'];
   const maps = await Promise.all(ids.map((id) => fetch(`maps/${id}.json`).then((r) => r.json())));
   ids.forEach((id, i) => { A.maps[id] = maps[i]; });
   const ses = Ses.get();

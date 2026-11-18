@@ -64,6 +64,10 @@ button, select, input, textarea { font: inherit; }
 .energy { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .energy .bar { width: 90px; height: 10px; background: #3a2d22; border: 2px solid #1d1520; border-radius: 4px; overflow: hidden; }
 .energy .bar i { display: block; height: 100%; background: linear-gradient(#ffd36b, #e0952b); width: 100%; transition: width .3s; }
+.energy.hp .lbl { color: #ff5252; }
+.energy.hp .bar i { background: linear-gradient(#ff7b7b, #d32f2f); }
+.dep-go { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #2A2D34; color: #c9c4b8; font-family: system-ui; font-size: 12.5px; }
+.dep-go .btn { white-space: nowrap; }
 .me-btns { display: flex; flex-direction: column; gap: 4px; }
 .me-btns button { font-size: 16px; width: 34px; height: 30px; background: #2d2840; border: 2px solid #4a4160; border-radius: 7px; cursor: pointer; padding: 0; }
 .me-btns button:hover { border-color: var(--brand2); }

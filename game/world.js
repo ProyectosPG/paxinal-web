@@ -5,9 +5,11 @@ import * as G from '../art/granxa.js';
 import * as M from '../art/mar.js';
 import * as AN from '../art/animais.js';
 import * as V from '../art/vila.js';
+import * as AB from '../art/albacete.js';
+import { Combat } from './albacete.js';
 import { hash } from '../art/paximon/townart.js';
 import { avatarSheet, DIRS, AW, AH } from '../art/paximon/avatar.js';
-import { DEPT_BY_ID, deptColor, HOUSE, FIELD, GIFT_PLOTS, FURNI_BY_ID, ITEMS, deskZone, DIEGO, SABRINA, WAITER, POXADOR, COOP, ANIMALS, COMERCIALES, ROUTES, LUNCH, CHASE_LINES, VECINOS, CARS, ZEBRAS } from '../core/data.js';
+import { DEPT_BY_ID, deptColor, HOUSE, FIELD, GIFT_PLOTS, FURNI_BY_ID, ITEMS, deskZone, DIEGO, SABRINA, WAITER, POXADOR, COOP, ALEJANDRO, ANIMALS, COMERCIALES, ROUTES, LUNCH, CHASE_LINES, VECINOS, CARS, ZEBRAS } from '../core/data.js';
 import * as R from '../core/rules.js';
 
 const T = 16;
@@ -126,12 +128,14 @@ export class World extends Phaser.Scene {
     const dept = id.startsWith('casa:') ? id.slice(5) : null;
     const J = this.app.maps[base];
     this.clearMap();
+    this.combat = null;
     const ground = J.rows.map((r) => [...r].map((ch) => J.legend[ch]));
     const map = this.map = { id, base, dept, J, W: J.w, H: J.h, ground, outdoor: !!J.outdoor };
     this.MW = map.W * T; this.MH = map.H * T;
     this.solid = Array.from({ length: map.H }, (_, y) => Uint8Array.from(ground[y], (t) => (SOLID.has(t) ? 1 : 0)));
     this.season = R.seasonOf(this.app.now());
     this.S = G.SEASONS[map.outdoor ? this.season : 'primavera'];
+    if (J.dry) this.S = { ...this.S, grass: ['#C6BC78', '#A69C5C', '#DDD59A'], frost: false, fallen: false };   // Albacete: secano
     this.paintGround();
     this.lights = []; this.trees = []; this.barriers = []; this.shipBoxes = []; this.litImgs = []; this.boardLabel = null; this.trainSpr = null; this.zoneG = null; this.panel = null; this.gulls = []; this.troughs = {}; this.beasts = new Map();
     this.doorTiles = new Map(); this.furni = new Map(); this.plotsDrawn = new Map(); this.fieldList = J.fields || [];
@@ -168,6 +172,7 @@ export class World extends Phaser.Scene {
     this.refreshFarm(true);
     this.refreshFurni();
     this.refreshAnimals();
+    if (J.combat) this.combat = new Combat(this);   // Albacete: la gente de la calle y las navajas (game/albacete.js)
     this.app.onMapLoaded(map);
   }
   track(o) { this.mapObjs.push(o); return o; }
@@ -307,12 +312,22 @@ export class World extends Phaser.Scene {
         return;
       }
       case 'banner': return;   // se pone al decorar la casa (lleva el color del departamento)
+      // --- Albacete ---
+      case 'block': this.block(o.x, o.y, 1, 1); return;   // pilar de un arco
+      case 'arco': return this.sprite(this.tex('arco:' + JSON.stringify([o.w, o.style, o.label]), () => AB.arco(o)), o.x, o.y, o.w, 1, { walk: true });
+      case 'catedral': return this.sprite(this.tex('catedral:' + o.w + ':' + o.h, () => AB.catedral(o)), o.x, o.y, o.w, o.h);
+      case 'departures_alba': return this.sprite(this.tex('departures:alba', () => G.departures([{ dest: 'PAXIMIÑA', time: 'YA' }, { dest: 'MADRID', time: '?', color: '#FF7043' }])), o.x, o.y, 4, 1);
+      case 'train_static': {   // el tren de Albacete, por fin parado en su estación
+        const lit = R.darkness(R.hourOf(this.app.now())) > 0.25;
+        this.track(this.add.image(o.x * T, (o.y + 1) * T + 6 - 42, this.tex('train:1:' + lit, () => G.train(1, lit))).setOrigin(0).setDepth((o.y + 2) * T));
+        return;
+      }
     }
   }
   // ---------- NPC ----------
   addNpc(n) {
     let look, shirt, extras = [], name;
-    if (['diego', 'sabrina', 'camarero', 'poxador', 'coop'].includes(n.who)) { const D = { diego: DIEGO, sabrina: SABRINA, camarero: WAITER, poxador: POXADOR, coop: COOP }[n.who]; look = D.look; shirt = D.shirt; extras = D.extras; name = D.name; }
+    if (['diego', 'sabrina', 'camarero', 'poxador', 'coop', 'alejandro'].includes(n.who)) { const D = { diego: DIEGO, sabrina: SABRINA, camarero: WAITER, poxador: POXADOR, coop: COOP, alejandro: ALEJANDRO }[n.who]; look = D.look; shirt = D.shirt; extras = D.extras; name = D.name; }
     else if (n.dept) {
       if (!this.app.houseEmpty(n.dept)) return;   // la casa ya tiene jugadores: el vecino está dentro
       const d = DEPT_BY_ID[n.dept]; look = d.npc.look; shirt = d.color; extras = d.npc.extras; name = d.npc.name;
@@ -698,6 +713,8 @@ export class World extends Phaser.Scene {
     if (id === this.me?.id) return this.me;
     if (this.remotes.get(id)?.spr) return this.remotes.get(id);
     if (String(id).startsWith('beast:')) { const b = this.beasts?.get(Number(id.slice(6)) || id.slice(6)); return b ? { x: b.x, y: b.y - 4 } : null; }
+    const fk = this.combat?.folk.find((q) => q.id === id);
+    if (fk) return fk.state === 'ko' && fk.spr.alpha < 0.2 ? null : { x: fk.x, y: fk.y };
     const n = this.npcs?.find((q) => q.id === id);
     return n && n.spr.visible !== false ? { x: n.spr.x, y: n.spr.y - 1 } : null;
   }
@@ -771,12 +788,14 @@ export class World extends Phaser.Scene {
     if (!this.map || this.app.blocked()) return;
     if (this.mode) { const f = target || this.facing(); this.app.modeClick(f.tx, f.ty, this.furniAt(f.tx, f.ty)); return; }
     const f = target || this.facing();
+    if (this.combat?.threat()) return this.combat.attack();   // con un navajero encima, Espacio siempre es navajazo (aunque haya un cartel delante)
     const npc = !target && this.npcNear();
     if (npc) return this.app.talk(npc);
     const door = this.doorTiles.get(f.tx + ',' + f.ty);
     if (door) return this.app.door(door);
     const spot = this.spotAt(f.tx, f.ty) || (!target && this.spotAt(Math.floor(this.me.x / T), Math.floor((this.me.y - 2) / T)));
     if (spot) return this.app.spot(spot);
+    if (this.combat) return this.combat.attack();   // en Albacete, lo demás es navajazo
     if (target) { const n = (this.npcs || []).find((q) => Math.floor(q.spr.x / T) === f.tx && Math.floor((q.spr.y - 2) / T) === f.ty); if (n) return this.app.talk(n); }
     const field = this.fieldAt(f.tx, f.ty);
     if (field) return this.app.useOnField(field, f);
@@ -854,6 +873,7 @@ export class World extends Phaser.Scene {
     this.updateComerciales(now, dt);
     this.updateTraffic(now, dt);
     this.updateAnimals(now, dt);
+    this.combat?.update(dt);
     for (const g of this.gulls) {
       g.t += dt;
       const hop = Math.max(0, Math.sin(g.t * 2.2)) > 0.97 ? 2 : 0, flap = Math.floor(g.t * 6) % 9 === 0 && Math.sin(g.t / 3) > 0.6;
@@ -1038,6 +1058,8 @@ export class World extends Phaser.Scene {
       water: { tex: 'drop', n: 10, speed: [20, 40], angle: [80, 100], g: 340, life: 320, zone: [-6, -16, 12, 6], rot: 0 },
       plant: { tex: 'leaf', n: 3, speed: [14, 26], angle: [245, 295], g: -8, life: 750, zone: [-3, -2, 6, 3], rot: 180 },
       harvest: { tex: 'dust', n: 8, speed: [30, 55], angle: [200, 340], g: 120, life: 420, zone: [-5, -2, 10, 4], rot: 0 },
+      stab: { tex: 'spark', n: 5, speed: [35, 70], angle: [200, 340], g: 140, life: 280, zone: [-4, -10, 8, 6], rot: 0 },
+      ko: { tex: 'star', n: 9, speed: [30, 60], angle: [220, 320], g: 50, life: 750, zone: [-5, -14, 10, 6], rot: 180 },
     }[kind];
     if (!C) return;
     const em = this.track(this.add.particles(tx * T + 8, ty * T + 9, this.tex('fx:' + C.tex, () => G.fxParticle(C.tex)), {
@@ -1071,7 +1093,7 @@ export class World extends Phaser.Scene {
   }
   updateLight(hour, now) {
     const cam = this.cameras.main, wv = cam.worldView, outdoor = this.map.outdoor;
-    const night = outdoor ? R.darkness(hour) : this.map.J.dim ? 0.32 : 0, rain = outdoor && R.rainy(R.dayKey(now));
+    const night = outdoor ? R.darkness(hour) : this.map.J.dim ? 0.32 : 0, rain = outdoor && !this.map.J.dry && R.rainy(R.dayKey(now));
     this.night = night;
     const warm = outdoor ? R.warmth(hour) : 0;
     this.warm.setPosition(wv.x - 1, wv.y - 1).setSize(wv.width + 2, wv.height + 2).setFillStyle(0xff8040, warm);
