@@ -14,6 +14,8 @@ import { openBoard, boardCount } from './ui/board.js';
 import { fishingGame } from './ui/fishing.js';
 import { openMapa } from './ui/mapa.js';
 import { createGuide } from './ui/guia.js';
+import * as E from './core/eleccions.js';
+import { openPrograma, openConcello } from './ui/eleccions.js';
 import { animal as animalArt } from './art/animais.js';
 const AN_ART = (kind) => animalArt(kind, 0).cv;
 
@@ -51,6 +53,34 @@ A.guide = createGuide(A, { onFinish: () => setTimeout(() => {
   toast('¡Enhorabuena! Ya has hecho tu primer día en Paximiña. Mañana a las 7:00 cobras lo de la caja.', 'good'); Sound.play('coins');
   chat.system('Paximiña de Arousa', `${A.player.nickname} completó su primer día. Benvido/a ao pobo!`);
 }, 1800) });
+
+// ---------- eleccións a Paxineitor alcalde (core/eleccions.js) ----------
+// A.elex: lo que dice el servidor ({voted, turnout, census, results, perk_day}); los votos de los jugadores
+// (results) solo llegan cuando la urna ya está cerrada.
+A.elex = null;
+A.refreshElex = async () => {
+  if (!A.player || E.phase(A.now()) === 'off') { A.elex = null; return; }
+  try { A.elex = await net.rpc('election_state', { p_secret: A.player.secret }); } catch (e) { A.elex = { ...(A.elex || {}), error: e.message }; }
+};
+let elexMemo = ['', null];
+A.elexWinner = () => {
+  if (!A.elex?.results || E.phase(A.now()) !== 'goberno') return null;
+  const k = JSON.stringify(A.elex.results);
+  if (elexMemo[0] !== k) elexMemo = [k, E.resultado(A.elex.results).alcalde];
+  return elexMemo[1];
+};
+const elexLine = (name, key) => { const t = E.npcLine(key, A.now()); return t ? [[name, t]] : []; };
+function elexTick(now) {
+  const ph = E.phase(now);
+  if (ph === A.elexPhase) return;
+  const before = A.elexPhase; A.elexPhase = ph;
+  if (before === undefined) return;
+  A.refreshElex().then(() => {
+    if (ph !== 'goberno') return;
+    const w = A.elexWinner();
+    if (w) { toast(`¡Urna cerrada! ${E.PARTY[w].cand} (${E.PARTY[w].sigla}) es el nuevo Paxineitor alcalde. El escrutinio, en el Concello.`, 'good'); chat.system('Xunta Electoral', `Escrutinio terminado: ${E.PARTY[w].cand} (${E.PARTY[w].sigla}), alcalde de Paximiña. Pasa por el Concello a ver el recuento.`); }
+  });
+}
 
 // ---------- datos ----------
 const pkey = (p) => `${p.house}:${p.x}:${p.y}`;
@@ -189,12 +219,15 @@ async function enterGame(p, first = false) {
   A.player = p; A.offset = (p.now || Date.now()) - Date.now(); A.first = first;
   Ses.set({ id: p.id, secret: p.secret });
   await loadAll();
+  await A.refreshElex();
   screen('');
   $('#hud').hidden = false;
   $('#hud-money-ico').replaceChildren(scaled(G.paxetaIcon()));
   chat.show();
   renderHud(); renderHotbar();
   A.guide.start(first, p.gift);
+  if (E.canVote(A.now())) chat.system('Xunta Electoral', A.elex?.voted ? 'Eleccións a Paxineitor alcalde: ya has votado. El escrutinio, el viernes 27 a las 13:00.' : 'Eleccións a Paxineitor alcalde: los candidatos están de campaña por el pueblo y sus casetas, en la praza da Fonte. Se vota en la puerta del Concello hasta el viernes 27 a las 13:00.');
+  else if (E.phase(A.now()) === 'goberno' && A.elexWinner()) chat.system('Concello', `Gobierna ${E.PARTY[A.elexWinner()].cand} (${E.PARTY[A.elexWinner()].sigla}). El decreto de hoy se recoge en la puerta del Concello.`);
   if (!A.game) {
     // Phaser no puede arrancar en una ventana de tamaño cero (pestaña oculta): se espera a que tenga tamaño
     const make = () => {
@@ -324,6 +357,7 @@ A.onTrain = (t) => {
   toast(D.renfeLine(t));
 };
 A.door = (d) => {
+  if (A.world.map.id === E.URNA.map && d.x === E.URNA.x && d.y === E.URNA.y && E.phase(A.now()) !== 'off') return openConcello(A);
   if (d.to === 'cafe') {
     const h = R.hourOf(A.now());
     if (h < D.CAFE_HOURS[0] || h >= D.CAFE_HOURS[1]) return talk('Cartel en la puerta', D.CLOSED_LINES[0]);
@@ -360,6 +394,10 @@ function goTo(id, at = null, then = null) {
 A.spot = (s) => {
   switch (s.action) {
     case 'board': return openBoard(A);
+    case 'elex_caseta': return openPrograma(A, s.party);
+    case 'elex_urna': return openConcello(A);
+    case 'elex_cartel': { const P = E.PARTY[s.party]; return talk('Cartel electoral', `${P.sigla} · ${P.name}. Vota a ${P.cand}. «${P.lema}» Alguien le ha pintado bigote con rotulador. Sospechan de Edición.`); }
+    case 'elex_atril': return talk('Atril de los mítines', 'Mítines de hoy en la praza: ' + E.PARTIDOS.filter((P) => P.map === 'vila').map((P) => `${P.short} a las ${Math.floor(P.mitin[0][0])}:00`).join(', ') + '. Abasfax da el suyo delante de la casa de RRSS, en O Agro. Todos los días. Dos veces.');
     case 'shop': return cafeShop();
     case 'shop_bonsai': return bonsaiShop();
     case 'lonxa': return lonxaSell();
@@ -381,29 +419,34 @@ A.talk = (n) => {
   if (n.who === 'diego' || n.who === 'sabrina') {
     const h = R.hourOf(A.now());
     if (h < D.CAFE_HOURS[0] || h >= D.CAFE_HOURS[1]) return talk(n.name, D.CLOSED_LINES[0]);
-    return talk(n.name, D.CAFE_LINES[Math.floor(Math.random() * D.CAFE_LINES.length)], cafeShop);
+    return talkSeq([[n.name, D.CAFE_LINES[Math.floor(Math.random() * D.CAFE_LINES.length)]], ...elexLine(n.name, n.who)], cafeShop);
   }
   if (n.who === 'brais' || n.who === 'vanesa') {
     const c = D.COMERCIALES.find((q) => q.id === n.who), deal = R.dealOf(R.dayKey(A.now()));
-    return talkSeq([[c.name, c.lines[Math.floor(Math.random() * c.lines.length)]],
+    return talkSeq([...(E.canVote(A.now()) ? E.comLines(n.who, A.now()).map((t) => [c.name, t]) : []), [c.name, c.lines[Math.floor(Math.random() * c.lines.length)]],
       [c.name, `¡Oferta solo por hoy! ${D.ITEMS[deal].name} a ${R.priceOf(deal, A.now())} paxetas en vez de ${D.ITEMS[deal].price}. Mañana, otra. Bueno, la misma.`]], () => comShop(c));
   }
-  if (n.who === 'coop') return talk(n.name, D.COOP_LINES[Math.floor(Math.random() * D.COOP_LINES.length)], coopShop);
+  if (n.who === 'candidato') {
+    const P = E.PARTY[n.cand];
+    if (E.phase(A.now()) === 'goberno') return talkSeq([[P.cand, `Soy el alcalde de Paximiña. ${P.lema}.`], [P.cand, 'El programa está «en estudio». De momento, pasa por el Concello a por el decreto de hoy.']], () => openConcello(A));
+    return talkSeq([[P.cand, pickLine(P.rrss && A.player.dept === 'rrss' ? P.rrss : P.lines)], [P.cand, `Vota ${P.sigla}. «${P.lema}» Te dejo el programa, que es cortito.`]], () => openPrograma(A, P.id));
+  }
+  if (n.who === 'coop') return talkSeq([[n.name, D.COOP_LINES[Math.floor(Math.random() * D.COOP_LINES.length)]], ...elexLine(n.name, 'coop')], coopShop);
   if (n.who === 'alejandro') return talk(n.name, D.ALEJANDRO_LINES[Math.floor(Math.random() * D.ALEJANDRO_LINES.length)]);
-  if (n.who === 'vecino') return talk(n.name, n.lines[Math.floor(Math.random() * n.lines.length)]);   // vecinos de A Vila (A11)
+  if (n.who === 'vecino') return talkSeq([[n.name, n.lines[Math.floor(Math.random() * n.lines.length)]], ...elexLine(n.name, n.id)]);   // vecinos de A Vila (A11)
   if (n.who === 'poxador') {
     const h = R.hourOf(A.now()), auction = R.inHours(h, D.AUCTION_HOURS);
-    return talk(n.name, auction ? '¡Empieza la subasta! Saca lo que traigas, que hoy los restaurantes pagan bien.' : 'Aquí se compra pescado fresco. Y lo que saques del agua, aunque sea un disquete. A las 12:00, subasta.', lonxaSell);
+    return talkSeq([[n.name, auction ? '¡Empieza la subasta! Saca lo que traigas, que hoy los restaurantes pagan bien.' : 'Aquí se compra pescado fresco. Y lo que saques del agua, aunque sea un disquete. A las 12:00, subasta.'], ...elexLine(n.name, 'poxador')], lonxaSell);
   }
   if (n.who === 'camarero') {
     // solo gruñe… salvo a quien lleva un mes viniendo: entonces, un día, «bo día»
     if ((A.player.bonsai_days || 0) >= D.BONSAI_DAYS) return talk(n.name, 'Bo día.', () => { toast('Logro secreto: ¡el camarero del Bonsai te ha dado los buenos días!', 'good'); bonsaiShop(); });
-    return talk(n.name, D.GRUNTS[Math.floor(Math.random() * D.GRUNTS.length)], bonsaiShop);
+    return talkSeq([[n.name, D.GRUNTS[Math.floor(Math.random() * D.GRUNTS.length)]], ...elexLine(n.name, 'camarero')], bonsaiShop);
   }
   const d = D.DEPT_BY_ID[n.dept];
   if (!d) return;
   const line = d.npc.lines[Math.floor(Math.random() * d.npc.lines.length)];
-  talkSeq([[n.name, line], [n.name, `Esta es la casa de ${d.name}. Mientras no se apunte nadie de ${d.name}, cuido yo la casa y la leira. Cuando llegue el primero, se la dejo.`]]);
+  talkSeq([[n.name, line], ...elexLine(n.name, n.dept), [n.name, `Esta es la casa de ${d.name}. Mientras no se apunte nadie de ${d.name}, cuido yo la casa y la leira. Cuando llegue el primero, se la dejo.`]]);
 };
 A.clickPlayer = (id) => {
   const m = A.online.get(id); if (!m) return;
@@ -1083,6 +1126,7 @@ function renderHotbar() {
 function tickHud() {
   if (!A.player || !A.world?.map) return;
   A.guide.tick();
+  elexTick(A.now());
   const now = A.now(), season = R.seasonOf(now), out = A.world.map.outdoor;
   $('#hud-clock').textContent = R.clockText(now);
   $('#hud-season').textContent = `${R.SEASON_NAMES[season]} (${R.SEASON_Q[season]})`;
@@ -1101,8 +1145,9 @@ function tickHud() {
   const beast = !npc && w.animalAt(f.tx, f.ty);
   if (npc) s = `Espacio: hablar con ${npc.name}`;
   else if (beast) { const st = R.animalState(beast.row, A.now()); s = `${beast.row.name} · ${st.ready ? `¡tiene ${D.ITEMS[D.ANIMALS[beast.row.kind].product].name.toLowerCase()}!` : st.fed || !D.ANIMALS[beast.row.kind].product ? 'Espacio: acariciar' : 'tiene hambre'}`; }
+  else if (door && w.map.id === E.URNA.map && door.x === E.URNA.x && door.y === E.URNA.y && E.phase(now) !== 'off') s = E.canVote(now) ? 'Espacio: entrar a votar (colegio electoral)' : 'Espacio: ver el escrutinio y recoger el decreto del alcalde';
   else if (door) s = door.to || door.shop ? `Espacio: entrar en ${door.label || 'la casa'}` : 'Espacio: llamar a la puerta';
-  else if (spot) s = { board: 'Espacio: leer el tablón de anuncios', shop: 'Espacio: comprar', shop_bonsai: 'Espacio: pedir un café (si te atreves)', lonxa: 'Espacio: vender en la lonxa', feed: 'Espacio: echar pienso en el comedero', shop_naval: 'Espacio: mirar las cañas', gull: 'Espacio: mirar a la gaviota', departures: 'Espacio: mirar el panel de salidas', departures_alba: 'Espacio: mirar el panel (y volver a Paximiña)', siesta: 'Espacio: echarte en el sofá (recupera la salud)', shop_alejandro: 'Espacio: abrir la despensa de Alejandro', ship: 'Espacio: abrir la caja de envíos', catalog: 'Espacio: mirar el catálogo de muebles', house_info: 'Espacio: ver quién vive aquí', duck: 'Espacio: contarle tus penas al pato' }[spot.action] || 'Espacio: leer';
+  else if (spot) s = { elex_caseta: 'Espacio: leer el programa', elex_urna: E.canVote(now) ? 'Espacio: votar' : 'Espacio: ver el escrutinio', elex_cartel: 'Espacio: mirar el cartel', elex_atril: 'Espacio: ver a qué hora son los mítines', board: 'Espacio: leer el tablón de anuncios', shop: 'Espacio: comprar', shop_bonsai: 'Espacio: pedir un café (si te atreves)', lonxa: 'Espacio: vender en la lonxa', feed: 'Espacio: echar pienso en el comedero', shop_naval: 'Espacio: mirar las cañas', gull: 'Espacio: mirar a la gaviota', departures: 'Espacio: mirar el panel de salidas', departures_alba: 'Espacio: mirar el panel (y volver a Paximiña)', siesta: 'Espacio: echarte en el sofá (recupera la salud)', shop_alejandro: 'Espacio: abrir la despensa de Alejandro', ship: 'Espacio: abrir la caja de envíos', catalog: 'Espacio: mirar el catálogo de muebles', house_info: 'Espacio: ver quién vive aquí', duck: 'Espacio: contarle tus penas al pato' }[spot.action] || 'Espacio: leer';
   else if (field) {
     const p = A.plots.get(`${field.dept}:${field.rx}:${field.ry}`);
     if (A.houseEmpty(field.dept)) s = `Leira de ${D.deptName(field.dept)} (la cuida ${D.DEPT_BY_ID[field.dept].npc.name})`;

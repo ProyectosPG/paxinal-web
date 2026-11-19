@@ -6,6 +6,8 @@ import { openModal, ipmHead, esc, stamp, toast, modalOpen, Sound, scaled } from 
 import { DEPTS, deptColor, DEPT_BY_ID, TOWN, ITEMS } from '../core/data.js';
 import * as R from '../core/rules.js';
 import { itemIcon } from '../art/granxa.js';
+import * as E from '../core/eleccions.js';
+import { renderElexTab } from './eleccions.js';
 
 const EVERYONE = 'Todo o pobo';
 const LS_SEEN = 'paxinal.notes.seen';
@@ -17,14 +19,14 @@ export async function boardCount(app) {
   return { total: notes.length, fresh };
 }
 
-export function openBoard(app) {
+export function openBoard(app, tab = null) {
   if (modalOpen()) return null;
   const P = app.player, seenKey = LS_SEEN + '.' + app.net.kind + '.' + app.player.id;
   const seenBefore = Number(localStorage.getItem(seenKey) || 0);
   const deptOpts = DEPTS.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
   const mo = openModal(`${ipmHead(`IPaxMsg LogViewer — Tablón de ${TOWN}`, true)}
-    <div class="ipm-tabs"><button type="button" class="ipm-tab on" data-tab="notes">Tablón <b>×</b></button><button type="button" class="ipm-tab" data-tab="orders">Encargos <span class="ord-badge" hidden></span> <b>×</b></button><span class="ipm-plus">+</span></div>
-    <div class="ipm-orders" hidden></div>
+    <div class="ipm-tabs"><button type="button" class="ipm-tab on" data-tab="notes">Tablón <b>×</b></button><button type="button" class="ipm-tab" data-tab="orders">Encargos <span class="ord-badge" hidden></span> <b>×</b></button>${E.phase(app.now()) !== 'off' ? '<button type="button" class="ipm-tab" data-tab="elex">Eleccións <b>×</b></button>' : ''}<span class="ipm-plus">+</span></div>
+    <div class="ipm-orders" hidden></div><div class="ipm-orders ipm-elex" hidden></div>
     <div class="ipm-toolbar">
       <div class="ipm-tools" aria-hidden="true"><span class="ico">⤓</span><span class="ico">−</span><span class="ico">🗎</span></div>
       <select class="f-user" title="Filtrar por autor"><option value="">All Users</option></select>
@@ -107,7 +109,7 @@ export function openBoard(app) {
     btn.disabled = false;
   });
   // ---------- encargos del día ----------
-  const ordBox = el.querySelector('.ipm-orders'), badge = el.querySelector('.ord-badge');
+  const ordBox = el.querySelector('.ipm-orders'), elexBox = el.querySelector('.ipm-elex'), badge = el.querySelector('.ord-badge');
   const notesEls = [el.querySelector('.ipm-toolbar'), log, form, el.querySelector('.ipm-status')];
   let day = null, orders = [], done = [], ordErr = '';
   const loadOrders = async () => {
@@ -149,10 +151,13 @@ export function openBoard(app) {
     for (const b of el.querySelectorAll('.ipm-tab[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
     for (const x of notesEls) x.hidden = tab !== 'notes';
     ordBox.hidden = tab !== 'orders';
+    elexBox.hidden = tab !== 'elex';
     if (tab === 'orders') loadOrders();
+    if (tab === 'elex') renderElexTab(app, elexBox);
   };
   for (const b of el.querySelectorAll('.ipm-tab[data-tab]')) b.addEventListener('click', () => showTab(b.dataset.tab));
   loadOrders();
+  if (tab) showTab(tab);
 
   app.board = { reload };
   reload();

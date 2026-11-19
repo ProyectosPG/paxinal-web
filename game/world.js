@@ -11,6 +11,8 @@ import { hash } from '../art/paximon/townart.js';
 import { avatarSheet, DIRS, AW, AH } from '../art/paximon/avatar.js';
 import { DEPT_BY_ID, deptColor, HOUSE, FIELD, GIFT_PLOTS, FURNI_BY_ID, ITEMS, deskZone, DIEGO, SABRINA, WAITER, POXADOR, COOP, ALEJANDRO, ANIMALS, COMERCIALES, ROUTES, LUNCH, CHASE_LINES, VECINOS, CARS, ZEBRAS } from '../core/data.js';
 import * as R from '../core/rules.js';
+import * as E from '../core/eleccions.js';
+import * as EL from '../art/eleccions.js';
 
 const T = 16;
 const SOLID = new Set(['water', 'rail_t', 'rail_b', 'ballast', 'wall_in', 'void']);
@@ -140,6 +142,7 @@ export class World extends Phaser.Scene {
     this.lights = []; this.trees = []; this.barriers = []; this.shipBoxes = []; this.litImgs = []; this.boardLabel = null; this.trainSpr = null; this.zoneG = null; this.panel = null; this.gulls = []; this.troughs = {}; this.beasts = new Map();
     this.doorTiles = new Map(); this.furni = new Map(); this.plotsDrawn = new Map(); this.fieldList = J.fields || [];
     for (const o of J.objects) this.placeObject(o);
+    this.addElexObjs();
     for (const d of J.doors) for (let i = 0; i < (d.w || 1); i++) this.doorTiles.set((d.x + i) + ',' + d.y, d);
     this.buildRoutes();
     // personajes del mapa (vecinos, Diego y Sabrina, y los comerciales cuando pasen por aquí)
@@ -346,6 +349,8 @@ export class World extends Phaser.Scene {
     if (ROUTES[this.map.id]) this.buildRoute(this.map.id, ROUTES[this.map.id]);
     // (A11) y la ruta de cada vecino que pasea por este mapa
     for (const v of VECINOS) if (v.map === this.map.id) this.buildRoute('v:' + v.id, v);
+    // (eleccións) y la de cada candidato que hace campaña en este mapa
+    if (this.elx) for (const P of E.PARTIDOS) if (P.map === this.map.id) this.buildRoute('v:' + E.candId(P.id), P);
   }
   buildRoute(name, R0) {
     const wp = R0.pts, pts = [[wp[0][0], wp[0][1]]], stops = new Set();
@@ -394,6 +399,78 @@ export class World extends Phaser.Scene {
       const n = { ...v, who: 'vecino', vecino: true, com: true, spr, sh, tag, dog, x: 0, y: 0, dir: 'down', at: 0, f: 0, shown: false, baseDir: 'down' };
       this.coms.push(n); this.npcs.push(n);
     }
+    // (eleccións) los Paxineitors candidatos: cada uno en el mapa donde hace campaña, y en A Vila por si sale alcalde
+    if (this.elx) for (const P of E.PARTIDOS) {
+      if (P.map !== this.map.id && this.map.id !== 'vila') continue;
+      const spr = this.track(this.add.sprite(0, 0, this.paxiSheet(P.id), 0).setOrigin(0.5, 1).setVisible(false));
+      const sh = this.track(this.add.image(0, 0, 'shadow').setOrigin(0.5).setVisible(false));
+      const tag = this.track(this.add.image(0, 0, this.tagTex(P.short + ' · ' + P.sigla, P.color)).setOrigin(0.5, 1).setDepth(9.5e5).setAlpha(0));
+      const dog = P.pet && P.map === this.map.id ? { kind: P.pet, gap: 20, spr: this.track(this.add.image(0, 0, this.tex('an:' + P.pet + ':0', () => AN.animal(P.pet, 0))).setOrigin(0.5, 1).setVisible(false)), x: 0, y: 0, f: 0, at: 0 } : null;
+      const n = { id: E.candId(P.id), name: P.cand, who: 'candidato', cand: P.id, vecino: true, com: true, spr, sh, tag, dog, th: EL.PH, x: 0, y: 0, dir: 'down', at: 0, f: 0, shown: false, baseDir: 'down' };
+      this.coms.push(n); this.npcs.push(n);
+    }
+  }
+  paxiSheet(pid) {
+    const recipe = 'paxi:' + pid;
+    let k = this.texKeys.get(recipe);
+    if (k) return k;
+    k = 'pxn' + (++this.texN);
+    const tx = this.textures.addCanvas(k, EL.paxiSheet(pid));
+    for (let r = 0; r < 4; r++) for (let f = 0; f < 3; f++) tx.add(r * 3 + f, 0, f * EL.PW, r * EL.PH, EL.PW, EL.PH);
+    this.texKeys.set(recipe, k);
+    return k;
+  }
+  // ---------- eleccións: casetas, carteles, atril y urna (core/eleccions.js) ----------
+  // Se ponen solo mientras dura el evento y cada cosa en su fase; no están en el mapa, así que al acabar
+  // no queda nada. La casilla se ocupa (y se puede usar con Espacio) solo mientras la cosa se ve.
+  addElexObjs() {
+    this.xspots = []; this.elx = null;
+    const ph = E.phase(this.app.now()), id = this.map.id;
+    if (ph === 'off' || (id !== 'vila' && id !== 'agro')) return;
+    const items = [], CAMP = ['campana', 'reflexion'], ALL = ['campana', 'reflexion', 'goberno'];
+    const put = (k, x, y, dx, when, spot) => {
+      if (this.solid[y]?.[x]) return;   // nunca encima de algo
+      items.push({ img: this.sprite(k, x, y, 1, 1, { walk: true, dx }), x, y, when, spot: { x, y, ...spot } });
+    };
+    const cartel = (x, y, pid) => put(this.tex('elx:cartel:' + pid, () => EL.cartel(pid)), x, y, -1, ALL, { action: 'elex_cartel', party: pid });
+    if (id === 'vila') {
+      E.PARTIDOS.forEach((P, i) => { const [x, y] = [[22, 20], [25, 20], [32, 20], [34, 20]][i]; put(this.tex('elx:caseta:' + P.id, () => EL.caseta(P.id)), x, y, -4, CAMP, { action: 'elex_caseta', party: P.id }); });
+      put(this.tex('elx:atril', () => EL.atril()), 35, 24, 0, ['campana'], { action: 'elex_atril' });
+      put(this.tex('elx:urna', () => EL.urna()), 48, 36, 0, ALL, { action: 'elex_urna' });
+      cartel(44, 36, 'pp'); cartel(50, 36, 'psoe'); cartel(39, 19, 'fa'); cartel(19, 22, 'pax');
+    } else {
+      cartel(2, 53, 'pax'); cartel(8, 54, 'pax'); cartel(47, 57, 'psoe');
+      const h = (this.map.J.houses || []).find((q) => q.dept === 'rrss');
+      if (h) {   // si gobierna PAX, la casa de RRSS amanece precintada (de adorno: se entra igual)
+        const k = this.tex('elx:precinto', () => EL.precinto());
+        items.push({ img: this.track(this.add.image((h.x + h.w / 2) * T, (h.y + h.h - 1) * T + 1, k).setOrigin(0.5, 0).setDepth((h.y + h.h) * T + 2)), when: ['goberno'], only: 'pax' });
+      }
+    }
+    this.elx = { items, key: null, next: 0 };
+    this.applyElex(ph, this.app.elexWinner?.() || '');
+  }
+  applyElex(ph, winner) {
+    this.elx.key = ph + winner;
+    this.xspots = [];
+    for (const it of this.elx.items) {
+      const on = it.when.includes(ph) && (!it.only || it.only === winner);
+      it.img.setVisible(on);
+      if (it.spot) { this.block(it.x, it.y, 1, 1, on ? 1 : 0); if (on) this.xspots.push(it.spot); }
+    }
+  }
+  // cada par de segundos se mira si ha cambiado la fase; y los candidatos hablan: en el mitin sueltan su
+  // discurso frase a frase y, andando, piden el voto a quien pasa cerca
+  updateElex(now) {
+    if (!this.elx) return;
+    const t = performance.now(), me = this.me;
+    if (t > this.elx.next) { this.elx.next = t + 2000; const ph = E.phase(now), w = this.app.elexWinner?.() || ''; if (ph + w !== this.elx.key) this.applyElex(ph, w); }
+    if (this.app.blocked()) return;
+    for (const c of this.coms || []) {
+      if (!c.cand || !c.shown || t < (c.sayAt || 0)) continue;
+      const d = Math.hypot(me.x - c.x, me.y - c.y), P = E.PARTY[c.cand];
+      if (c.info?.mitin) { if (d < 170) { c.sayN = ((c.sayN ?? -1) + 1) % P.speech.length; this.say(c.id, P.speech[c.sayN], 4200); c.sayAt = t + 5800; } }
+      else if (d < 56) { this.say(c.id, c.info?.alcalde ? '¡Soy el alcalde! ' + P.lema + '.' : P.lines[Math.floor(Math.random() * P.lines.length)], 4200); c.sayAt = t + 11000; }
+    }
   }
   // si les das largas, te persiguen un rato por donde vayas (solo en tu pantalla)
   startChase(id) { this.chase = { id, until: performance.now() + 15000, next: performance.now() + 600 }; }
@@ -401,15 +478,16 @@ export class World extends Phaser.Scene {
     const me = this.me, t = performance.now();
     if (this.chase && t > this.chase.until) this.chase = null;
     for (const c of this.coms || []) {
-      const info = c.vecino ? R.vecinoAt(c, now) : R.comercialAt(c.id, now);
+      const info = c.cand ? E.candAt(E.PARTY[c.cand], now, this.app.elexWinner?.()) : c.vecino ? R.vecinoAt(c, now) : R.comercialAt(c.id, now);
+      c.info = info;
       const chasing = this.chase?.id === c.id;
       let target = null;
       if (chasing) {
         const [dx, dy] = DV[me.dir];
         target = { x: me.x - dx * 18, y: me.y - dy * 18, dir: null };
-        if (t > this.chase.next) { this.chase.next = t + 3500; this.say(c.id, CHASE_LINES[Math.floor(Math.random() * CHASE_LINES.length)], 3000); }
+        if (t > this.chase.next) { this.chase.next = t + 3500; const CL = this.elx && E.canVote(now) ? E.CHASE : CHASE_LINES; this.say(c.id, CL[Math.floor(Math.random() * CL.length)], 3000); }
       } else if (info && info.map === this.map.id) {
-        if (info.stand) { const [lx, ly] = LUNCH[c.id]; target = { x: lx * T + 8, y: ly * T + 12, dir: 'down' }; }
+        if (info.stand) { const [lx, ly] = Array.isArray(info.stand) ? info.stand : LUNCH[c.id]; target = { x: lx * T + 8, y: ly * T + 12, dir: 'down' }; }
         else target = this.routePos(info.route, (now - info.t0) / 1000);
       }
       if (!target) { if (c.shown) { c.shown = false; c.spr.setVisible(false); c.sh.setVisible(false); c.tag.setAlpha(0); c.dog?.spr.setVisible(false); } continue; }
@@ -429,7 +507,7 @@ export class World extends Phaser.Scene {
       if (moving) { c.at += dt; c.f = [1, 0, 2, 0][Math.floor(c.at / 0.16) % 4]; } else { c.f = 0; c.at = 0; }
       c.spr.setPosition(Math.round(c.x), Math.round(c.y) + 1).setFrame(DIRS.indexOf(c.dir) * 3 + c.f).setDepth(c.y);
       c.sh.setPosition(Math.round(c.x), Math.round(c.y)).setDepth(c.y - 0.5);
-      c.tag.setPosition(Math.round(c.x), Math.round(c.y) - AH - 1).setAlpha(Math.hypot(me.x - c.x, me.y - c.y) < 44 ? 1 : 0);
+      c.tag.setPosition(Math.round(c.x), Math.round(c.y) - (c.th || AH) - 1).setAlpha(Math.hypot(me.x - c.x, me.y - c.y) < 44 ? 1 : 0);
       if (c.dog) this.followDog(c, dt);
     }
   }
@@ -466,14 +544,14 @@ export class World extends Phaser.Scene {
   }
   // (A11) el can de Lola va detrás de ella, a un paso
   followDog(c, dt) {
-    const g = c.dog, [dx, dy] = DV[c.dir], tx = c.x - dx * 14, ty = c.y - dy * 10 + (dx ? 2 : 0);
+    const g = c.dog, kind = g.kind || 'can', [dx, dy] = DV[c.dir], tx = c.x - dx * (g.gap || 14), ty = c.y - dy * (g.gap ? 16 : 10) + (dx ? 2 : 0);
     const ex = tx - g.x, ey = ty - g.y, d = Math.hypot(ex, ey);
     const moving = d > 1.5;
     if (d > 120) { g.x = tx; g.y = ty; }
     else if (moving) { const step = Math.min(d, (26 + d * 2) * dt); g.x += (ex / d) * step; g.y += (ey / d) * step; if (Math.abs(ex) > 0.5) g.spr.setFlipX(ex < 0); }
     g.at = moving ? g.at + dt : 0;
     const f = moving ? Math.floor(g.at / 0.15) % 2 : 0;
-    if (f !== g.f) { g.f = f; g.spr.setTexture(this.tex('an:can:' + f, () => AN.animal('can', f))); }
+    if (f !== g.f) { g.f = f; g.spr.setTexture(this.tex('an:' + kind + ':' + f, () => AN.animal(kind, f))); }
     g.spr.setPosition(Math.round(g.x), Math.round(g.y) + 1).setDepth(g.y);
   }
 
@@ -767,7 +845,7 @@ export class World extends Phaser.Scene {
     return { tx: Math.floor(me.x / T) + dx, ty: Math.floor((me.y - 2) / T) + dy };
   }
   spotAt(tx, ty) {
-    for (const s of this.map.J.spots || []) {
+    for (const s of [...(this.xspots || []), ...(this.map.J.spots || [])]) {
       if (s.r) { if (Math.hypot(tx + 0.5 - (s.x + 0.5), ty + 0.5 - (s.y + 0.5)) <= s.r) return s; continue; }
       if (tx >= s.x && tx < s.x + (s.w || 1) && ty === s.y) return s;
     }
@@ -871,6 +949,7 @@ export class World extends Phaser.Scene {
     this.moveRemotes(dt);
     this.updateNpcs();
     this.updateComerciales(now, dt);
+    this.updateElex(now);
     this.updateTraffic(now, dt);
     this.updateAnimals(now, dt);
     this.combat?.update(dt);

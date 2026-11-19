@@ -12,6 +12,7 @@ import { shade } from './paximon/avatar.js';
 import { seaIcon } from './mar.js';
 import * as V from './vila.js';
 import * as AB from './albacete.js';
+import { chapa as chapaVoto } from './eleccions.js';
 
 export { T };
 
@@ -100,6 +101,7 @@ export function px(o) {
 const NEW_PAINTERS = {
   bonsai_plant: () => bonsaiPlant(),
   web_frame: () => webFrame(),
+  chapa_voto: () => chapaVoto(),
   ficha_frame: () => fichaFrame(),
   planter: (o) => V.planter(o.variant || 0),
   bandeira: () => V.bandeira(),

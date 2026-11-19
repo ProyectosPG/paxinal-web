@@ -183,9 +183,11 @@ export const FURNI = [
   { id: 'bonsai', name: 'Bonsái', price: 90, art: { kind: 'bonsai_plant' } },
   { id: 'web', name: 'Web corporativa (enmarcada)', price: 300, wall: true, w: 2, shop: 'comercial', art: { kind: 'web_frame' } },
   { id: 'ficha', name: 'Ficha de Google Maps', price: 120, wall: true, shop: 'comercial', art: { kind: 'ficha_frame' } },
+  // no se vende: se la lleva quien vota en las eleccións (core/eleccions.js)
+  { id: 'chapa', name: 'Chapa «Votei» (enmarcada)', price: 0, wall: true, w: 2, shop: 'premio', art: { kind: 'chapa_voto' } },
 ];
 export const FURNI_BY_ID = Object.fromEntries(FURNI.map((f) => [f.id, { w: 1, h: 1, ...f }]));
-for (const f of FURNI) ITEMS['m_' + f.id] = { name: f.name, kind: 'furni', price: f.price, shop: f.shop || 'catalogo', furni: f.id };
+for (const f of FURNI) ITEMS['m_' + f.id] = { name: f.name, kind: 'furni', price: f.price, shop: f.shop === 'premio' ? null : f.shop || 'catalogo', furni: f.id };
 // la semilla omnea da cualquier cosa al cosecharla (un cultivo, un mueble…): «omnea es todo»
 export const OMNEA_LOOT = ['grelos', 'patacas', 'pementos', 'palabra_top', 'organico', 'clics', 'resena', 'm_planta', 'm_bonsai', 'm_cafetera', 'm_rack', 'm_sofa', 'm_cadro'];
 

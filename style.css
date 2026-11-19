@@ -277,3 +277,35 @@ form.ipm-compose { display: flex; flex-direction: column; gap: 5px; padding: 6px
 .mapa-list span { font-size: 12px; color: var(--muted); }
 .mapa-list em { font-style: normal; font-size: 13px; color: #cbe3b0; }
 @media (max-width: 760px) { .mapa-wrap { flex-direction: column; } .mapa-side { width: auto; max-height: 30vh; } }
+
+/* ---------- eleccións a Paxineitor alcalde (noviembre de 2026) ---------- */
+.elx-head { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.elx-head h2 { margin-top: 4px; }
+.elx-pic { background: #1b1724; border: 3px solid var(--c); border-radius: 12px; padding: 4px; line-height: 0; flex: none; }
+.elx-pic canvas { width: 128px; height: 128px; image-rendering: pixelated; }
+.elx-sigla { display: inline-block; background: var(--c); color: #fff; border-radius: 6px; padding: 1px 10px; font-size: 20px; letter-spacing: 1px; box-shadow: 0 3px 0 var(--d); }
+.elx-list { margin: 6px 0 8px; padding-left: 26px; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.45; }
+.elx-list li { margin-bottom: 5px; }
+.elx-list li::marker { color: var(--c); font-weight: 700; }
+.elx-note { font-family: system-ui, sans-serif; font-size: 13px; color: #d8d2c4; margin: 6px 0; }
+.elx-foot { font-family: system-ui, sans-serif; font-size: 12px; }
+.elx-ballots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0; }
+.elx-ballot { display: flex; flex-direction: column; align-items: center; gap: 3px; background: #F7F3E8; color: #2a2430; border: 3px solid #cfc6b0; border-radius: 8px; padding: 8px 4px; cursor: pointer; font-family: var(--px); text-align: center; }
+.elx-ballot .pic { height: 68px; display: grid; place-items: center; font-size: 40px; color: #9E9E9E; }
+.elx-ballot .pic canvas { width: 64px; height: 64px; image-rendering: pixelated; }
+.elx-ballot b { background: var(--c); color: #fff; border-radius: 5px; padding: 0 8px; font-size: 15px; font-weight: 400; }
+.elx-ballot .nm { font-size: 12px; line-height: 1.15; min-height: 28px; }
+.elx-ballot .cd { font-size: 11px; color: #6b6375; font-family: system-ui, sans-serif; }
+.elx-ballot:hover { border-color: var(--c); }
+.elx-ballot.on { border-color: var(--c); box-shadow: 0 0 0 3px var(--c); background: #fff; }
+@media (max-width: 640px) { .elx-ballots { grid-template-columns: repeat(2, 1fr); } }
+.elx-seats { display: flex; gap: 3px; margin: 8px 0; }
+.elx-seats i { flex: 1; height: 16px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, .35); }
+.elx-row { display: grid; grid-template-columns: 46px 1fr auto auto; gap: 8px; align-items: center; font-size: 13px; font-family: system-ui, sans-serif; margin: 3px 0; }
+.elx-row .bar { height: 10px; background: rgba(128, 128, 128, .25); border-radius: 5px; overflow: hidden; }
+.elx-row .bar i { display: block; height: 100%; }
+.elx-row small { opacity: .7; }
+.elx-row .s { font-weight: 700; }
+.elx-perk { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: #1b1724; border: 2px solid var(--line); border-radius: 9px; padding: 8px 10px; margin-top: 10px; font-size: 14px; }
+.elx-light { font-family: system-ui, sans-serif; }
+.elx-light .elx-note { color: #444; }

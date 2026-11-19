@@ -3,6 +3,7 @@
 // probar el juego sin tocar la base de datos (?local en la dirección) y con dos pestañas a la vez.
 import { DEPTS, DEPT_BY_ID, CROPS, ITEMS, FURNI_BY_ID, HOUSE, FIELD, ENERGY_MAX, START_PAXETAS, ANIMALS, CORRAL_MAX, CAFE_HOURS, BONSAI_HOURS, LONXA_HOURS, AUCTION_HOURS, PICANTE_LONXA, FISH_TABLE, TRASH, SEASON_BONUS, OMNEA_LOOT, GIFT_PLOTS, START_INV, START_INV_JOIN, TOOL_AREA, ALBA_LOOT, deskZone } from '../core/data.js';
 import * as R from '../core/rules.js';
+import * as E from '../core/eleccions.js';
 
 const KEY = 'paxinal.localdb';
 // Por http y con la IP de la red (http://192.168…), el navegador no da crypto.randomUUID (solo existe
@@ -50,7 +51,38 @@ export function createLocal() {
   // de verdad no puede ir escrita aquí porque web/ se publica en Internet (tools/deploy-pages.mjs).
   const okCode = async () => true;
 
+  // eleccións: quién ha votado va en una lista y el recuento en otra, sin nada que las una (voto anónimo)
+  const elexDb = (db) => (db.elex ||= { voters: [], tally: {}, perks: {} });
+  const elexState = (db, p) => {
+    const x = elexDb(db);
+    return { voted: x.voters.includes(p.id), turnout: x.voters.length, census: db.players.length,
+      results: E.phase(clock()) === 'goberno' ? { pp: 0, psoe: 0, fa: 0, pax: 0, blanco: 0, ...x.tally } : null, perk_day: x.perks[p.id] || null };
+  };
+
   const RPC = {
+    async election_state({ p_secret }) { const db = load(), p = auth(db, p_secret); save(db); return elexState(db, p); },
+    async election_vote({ p_secret, p_party }) {
+      const db = load(), p = auth(db, p_secret), x = elexDb(db);
+      if (!E.canVote(clock())) fail('La urna está cerrada.');
+      if (!['pp', 'psoe', 'fa', 'pax', 'blanco'].includes(p_party)) fail('Esa papeleta no existe.');
+      if (x.voters.includes(p.id)) fail('Ya has votado: el voto no se puede cambiar.');
+      x.voters.push(p.id); x.tally[p_party] = (x.tally[p_party] || 0) + 1;
+      p.paxetas += E.VOTE_PAY; add(p, E.VOTE_GIFT, 1);
+      save(db);
+      return { player: me(p), state: elexState(db, p) };
+    },
+    // el decreto del alcalde: una vez al día mientras gobierna. Los cuatro regalos valen parecido, así que
+    // el servidor no recuenta para comprobar quién ganó: da el del partido que le dicen.
+    async election_perk({ p_secret, p_party }) {
+      const db = load(), p = auth(db, p_secret), x = elexDb(db), k = E.PERKS[p_party], day = R.dayKey(clock());
+      if (E.phase(clock()) !== 'goberno') fail('Ahora no hay decreto que recoger.');
+      if (!k) fail('Ese partido no existe.');
+      if (x.perks[p.id] === day) fail('El decreto de hoy ya lo recogiste. Mañana, otro.');
+      x.perks[p.id] = day;
+      if (k.paxetas) p.paxetas += k.paxetas; else add(p, k.item, k.n);
+      save(db);
+      return { player: me(p) };
+    },
     async check_code({ p_code }) { return okCode(p_code); },
     async register_player({ p_nickname, p_dept, p_house, p_look, p_code }) {
       if (!(await okCode(p_code))) fail('palabra de acceso incorrecta');
